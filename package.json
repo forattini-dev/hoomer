@@ -1,0 +1,22 @@
+{
+  "name": "hoomer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.js --bundle --outfile=dist/app.js --sourcemap --format=iife --loader:.css=text",
+    "build:pages": "pnpm build && node ./scripts/copy-pages.js",
+    "watch": "esbuild src/index.js --bundle --outfile=dist/app.js --sourcemap --format=iife --loader:.css=text --watch",
+    "serve": "live-server --open=/test/ --watch=dist,test --no-css-inject",
+    "serve:pages": "pnpm build:pages && live-server --open=/dist/ --watch=dist --no-css-inject",
+    "dev": "concurrently -k -n build,serve -c cyan,green \"pnpm watch\" \"pnpm serve\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "esbuild": "^0.24.2",
+    "live-server": "^1.2.2"
+  },
+  "dependencies": {
+    "three": "^0.182.0"
+  }
+}
