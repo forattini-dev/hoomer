@@ -13,7 +13,6 @@ import { Stair } from './Stair.js';
 import { Label } from './Label.js';
 import { Wire } from './Wire.js';
 import { ElectricalPanel } from './ElectricalPanel.js';
-import { ElectricalCircuit } from './ElectricalCircuit.js';
 import { ElectricalSymbol } from './ElectricalSymbol.js';
 import { Pipe } from './Pipe.js';
 import { PlumbingSymbol } from './PlumbingSymbol.js';
@@ -26,25 +25,8 @@ import { exportPNG, exportJSON } from './ExportManager.js';
 import { CostsView } from './CostsView.js';
 import { createLayeredStory, deserializeState, serializeState, storyName } from './AppStateIO.js';
 import { InputManager } from './InputManager.js';
-
-const SELECTABLE_FIELDS = [
-  'selectedWall',
-  'selectedFloor',
-  'selectedDoor',
-  'selectedWindow',
-  'selectedStair',
-  'selectedLabel',
-  'selectedWire',
-  'selectedPanel',
-  'selectedElectricalSymbol',
-  'selectedPipe',
-  'selectedPlumbingSymbol',
-  'selectedFurniture',
-];
-
-function getToolPanelId(tool) {
-  return TOOL_PANEL_MAP[tool] || '';
-}
+import { SelectionManager } from './SelectionManager.js';
+import { getCircuitsForPanel, computeCircuitLoadA, newCircuitForPanel, getPanelElectricalStatus } from './ElectricalCalc.js';
 
 export class App {
   constructor(root, hostElement, overrides = {}) {
@@ -58,10 +40,19 @@ export class App {
     this.stories = [createLayeredStory(storyName(0))];
     this.activeStoryIndex = 0;
 
-    // Selection
-    for (const field of SELECTABLE_FIELDS) {
-      this[field] = null;
-    }
+    // Selection (state lives on App for Renderer compat, managed by SelectionManager)
+    this.selectedWall = null;
+    this.selectedFloor = null;
+    this.selectedDoor = null;
+    this.selectedWindow = null;
+    this.selectedStair = null;
+    this.selectedLabel = null;
+    this.selectedWire = null;
+    this.selectedPanel = null;
+    this.selectedElectricalSymbol = null;
+    this.selectedPipe = null;
+    this.selectedPlumbingSymbol = null;
+    this.selectedFurniture = null;
 
     // View
     this.zoom = 1;
@@ -169,6 +160,9 @@ export class App {
 
     // Input handling (events, pan, zoom, pointer tracking)
     this.input = new InputManager(this.canvas, this.hostElement, this);
+
+    // Selection management (select, erase, delete, UI sync)
+    this.selection = new SelectionManager(this);
 
     this.renderer.resize();
     this._bindUI();
@@ -288,12 +282,7 @@ export class App {
     this._syncUndoRedo();
   }
 
-  _clearSelection() {
-    for (const field of SELECTABLE_FIELDS) {
-      this[field] = null;
-    }
-    this._labelEditActive = false;
-  }
+  _clearSelection() { this.selection.clear(); }
 
   // ── Layer Management ────────────────────────
   _switchLayer(layerName) {
@@ -688,50 +677,8 @@ export class App {
   }
 
   // ── Electrical Panel Operations ─────────────
-  _newCircuitForPanel(panelId) {
-    const existing = this.circuits.filter(c => c.panelId === panelId);
-    const index = existing.length + 1;
-    return new ElectricalCircuit(panelId, `C${index}`, CONFIG.DEFAULT_CIRCUIT_BREAKER_A, 1, 'C');
-  }
-
-  _getCircuitsForPanel(panelId) {
-    return this.circuits.filter(c => c.panelId === panelId);
-  }
-
-  _computeCircuitLoadA(circuitId) {
-    return this.electricalSymbols
-      .filter(sym => sym.circuitId === circuitId)
-      .reduce((sum, sym) => sum + (Number(sym.amperageA) || 0), 0);
-  }
-
-  _getPanelElectricalStatus(panelId) {
-    const panel = this.panels.find(p => p.id === panelId);
-    if (!panel) return null;
-    const circuits = this._getCircuitsForPanel(panelId);
-    const circuitStatuses = circuits.map(c => {
-      const loadA = this._computeCircuitLoadA(c.id);
-      const breakerA = Math.max(1, Number(c.breakerA) || 1);
-      return {
-        circuit: c,
-        loadA,
-        breakerA,
-        overload: loadA > breakerA,
-      };
-    });
-    const totalLoadA = circuitStatuses.reduce((sum, s) => sum + s.loadA, 0);
-    const mainBreakerA = Math.max(1, Number(panel.mainBreakerA) || 1);
-    const overloadedCircuits = circuitStatuses.filter(s => s.overload);
-    const panelOverload = totalLoadA > mainBreakerA;
-    return {
-      panel,
-      circuitStatuses,
-      overloadedCircuits,
-      totalLoadA,
-      mainBreakerA,
-      panelOverload,
-      hasIssue: panelOverload || overloadedCircuits.length > 0,
-    };
-  }
+  _getCircuitsForPanel(panelId) { return getCircuitsForPanel(this.circuits, panelId); }
+  _getPanelElectricalStatus(panelId) { return getPanelElectricalStatus(this.panels, this.circuits, this.electricalSymbols, panelId); }
 
   _addPanelAt(wx, wy) {
     this._pushHistory();
@@ -747,7 +694,7 @@ export class App {
       CONFIG.DEFAULT_PANEL_BUS_CAPACITY_A,
     );
     this.panels.push(panel);
-    const circuit = this._newCircuitForPanel(panel.id);
+    const circuit = newCircuitForPanel(this.circuits,panel.id);
     this.circuits.push(circuit);
     this.electricalCircuitId = circuit.id;
     this._status('Electrical panel added');
@@ -757,7 +704,7 @@ export class App {
   _addCircuitToPanel(panel) {
     if (!panel) return;
     this._pushHistory();
-    const c = this._newCircuitForPanel(panel.id);
+    const c = newCircuitForPanel(this.circuits,panel.id);
     this.circuits.push(c);
     this._refreshCircuitSelects();
     this._syncSelection();
@@ -799,218 +746,9 @@ export class App {
     this._status('Furniture placed — adjust rotation if needed');
   }
 
-  // ── Select ──────────────────────────────────
-  _selectAt(wx, wy) {
-    this._clearSelection();
-
-    if (this.activeLayer === 'structure') {
-      for (let i = this.doors.length - 1; i >= 0; i--) {
-        if (this.doors[i].hitTest(wx, wy)) { this.selectedDoor = this.doors[i]; this._syncSelection(); this._render(); return; }
-      }
-      for (let i = this.windows.length - 1; i >= 0; i--) {
-        if (this.windows[i].hitTest(wx, wy)) { this.selectedWindow = this.windows[i]; this._syncSelection(); this._render(); return; }
-      }
-      for (let i = this.labels.length - 1; i >= 0; i--) {
-        if (this.labels[i].hitTest(wx, wy)) { this.selectedLabel = this.labels[i]; this._syncSelection(); this._render(); return; }
-      }
-      for (let i = this.stairs.length - 1; i >= 0; i--) {
-        if (this.stairs[i].hitTest(wx, wy)) { this.selectedStair = this.stairs[i]; this._syncSelection(); this._render(); return; }
-      }
-      for (let i = this.walls.length - 1; i >= 0; i--) {
-        if (this.walls[i].hitTest(wx, wy)) { this.selectedWall = this.walls[i]; break; }
-      }
-      if (!this.selectedWall) {
-        for (let i = this.floors.length - 1; i >= 0; i--) {
-          if (this.floors[i].hitTest(wx, wy)) { this.selectedFloor = this.floors[i]; break; }
-        }
-      }
-    } else if (this.activeLayer === 'electrical') {
-      for (let i = this.panels.length - 1; i >= 0; i--) {
-        if (this.panels[i].hitTest(wx, wy)) { this.selectedPanel = this.panels[i]; this._syncSelection(); this._render(); return; }
-      }
-      for (let i = this.electricalSymbols.length - 1; i >= 0; i--) {
-        if (this.electricalSymbols[i].hitTest(wx, wy)) { this.selectedElectricalSymbol = this.electricalSymbols[i]; this._syncSelection(); this._render(); return; }
-      }
-      for (let i = this.wires.length - 1; i >= 0; i--) {
-        if (this.wires[i].hitTest(wx, wy)) { this.selectedWire = this.wires[i]; break; }
-      }
-    } else if (this.activeLayer === 'plumbing') {
-      for (let i = this.plumbingSymbols.length - 1; i >= 0; i--) {
-        if (this.plumbingSymbols[i].hitTest(wx, wy)) { this.selectedPlumbingSymbol = this.plumbingSymbols[i]; this._syncSelection(); this._render(); return; }
-      }
-      for (let i = this.pipes.length - 1; i >= 0; i--) {
-        if (this.pipes[i].hitTest(wx, wy)) { this.selectedPipe = this.pipes[i]; break; }
-      }
-    } else if (this.activeLayer === 'furniture') {
-      for (let i = this.furnitureItems.length - 1; i >= 0; i--) {
-        if (this.furnitureItems[i].hitTest(wx, wy)) {
-          this.selectedFurniture = this.furnitureItems[i];
-          this._syncSelection(); this._render(); return;
-        }
-      }
-    }
-    this._syncSelection();
-    this._render();
-  }
-
-  // ── Erase ───────────────────────────────────
-  _eraseAt(wx, wy) {
-    if (this.activeLayer === 'structure') {
-      for (let i = this.doors.length - 1; i >= 0; i--) {
-        if (this.doors[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.doors.splice(i, 1); this._status('Door removed'); this._render(); return;
-        }
-      }
-      for (let i = this.windows.length - 1; i >= 0; i--) {
-        if (this.windows[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.windows.splice(i, 1); this._status('Window removed'); this._render(); return;
-        }
-      }
-      for (let i = this.labels.length - 1; i >= 0; i--) {
-        if (this.labels[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.labels.splice(i, 1); this._status('Label removed'); this._render(); return;
-        }
-      }
-      for (let i = this.stairs.length - 1; i >= 0; i--) {
-        if (this.stairs[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.stairs.splice(i, 1); this._status('Stair removed'); this._render(); return;
-        }
-      }
-      for (let i = this.walls.length - 1; i >= 0; i--) {
-        if (this.walls[i].hitTest(wx, wy)) {
-          this._pushHistory();
-          const wall = this.walls[i];
-          this.doors = this.doors.filter(d => d.wall !== wall);
-          this.windows = this.windows.filter(w => w.wall !== wall);
-          this.walls.splice(i, 1);
-          this._status('Wall removed'); this._render(); return;
-        }
-      }
-      for (let i = this.floors.length - 1; i >= 0; i--) {
-        if (this.floors[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.floors.splice(i, 1); this._status('Floor removed'); this._render(); return;
-        }
-      }
-    } else if (this.activeLayer === 'electrical') {
-      for (let i = this.panels.length - 1; i >= 0; i--) {
-        if (this.panels[i].hitTest(wx, wy)) {
-          this._pushHistory();
-          const panel = this.panels[i];
-          const panelCircuits = this._getCircuitsForPanel(panel.id).map(c => c.id);
-          this.circuits = this.circuits.filter(c => c.panelId !== panel.id);
-          this.electricalSymbols.forEach(sym => {
-            if (panelCircuits.includes(sym.circuitId)) sym.circuitId = '';
-          });
-          this.panels.splice(i, 1);
-          this._refreshCircuitSelects();
-          this._status('Panel removed');
-          this._render();
-          return;
-        }
-      }
-      for (let i = this.electricalSymbols.length - 1; i >= 0; i--) {
-        if (this.electricalSymbols[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.electricalSymbols.splice(i, 1); this._status('Symbol removed'); this._render(); return;
-        }
-      }
-      for (let i = this.wires.length - 1; i >= 0; i--) {
-        if (this.wires[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.wires.splice(i, 1); this._status('Wire removed'); this._render(); return;
-        }
-      }
-    } else if (this.activeLayer === 'plumbing') {
-      for (let i = this.plumbingSymbols.length - 1; i >= 0; i--) {
-        if (this.plumbingSymbols[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.plumbingSymbols.splice(i, 1); this._status('Symbol removed'); this._render(); return;
-        }
-      }
-      for (let i = this.pipes.length - 1; i >= 0; i--) {
-        if (this.pipes[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.pipes.splice(i, 1); this._status('Pipe removed'); this._render(); return;
-        }
-      }
-    } else if (this.activeLayer === 'furniture') {
-      for (let i = this.furnitureItems.length - 1; i >= 0; i--) {
-        if (this.furnitureItems[i].hitTest(wx, wy)) {
-          this._pushHistory(); this.furnitureItems.splice(i, 1); this._status('Furniture removed'); this._render(); return;
-        }
-      }
-    }
-  }
-
-  _deleteSelected() {
-    if (this.selectedDoor) {
-      this._pushHistory();
-      this.doors = this.doors.filter(d => d !== this.selectedDoor);
-      this.selectedDoor = null;
-      this._syncSelection(); this._status('Door deleted'); this._render();
-    } else if (this.selectedWindow) {
-      this._pushHistory();
-      this.windows = this.windows.filter(w => w !== this.selectedWindow);
-      this.selectedWindow = null;
-      this._syncSelection(); this._status('Window deleted'); this._render();
-    } else if (this.selectedLabel) {
-      this._pushHistory();
-      this.labels = this.labels.filter(l => l !== this.selectedLabel);
-      this.selectedLabel = null;
-      this._syncSelection(); this._status('Label deleted'); this._render();
-    } else if (this.selectedStair) {
-      this._pushHistory();
-      this.stairs = this.stairs.filter(s => s !== this.selectedStair);
-      this.selectedStair = null;
-      this._syncSelection(); this._status('Stair deleted'); this._render();
-    } else if (this.selectedWall) {
-      this._pushHistory();
-      this.doors = this.doors.filter(d => d.wall !== this.selectedWall);
-      this.windows = this.windows.filter(w => w.wall !== this.selectedWall);
-      this.walls = this.walls.filter(w => w !== this.selectedWall);
-      this.selectedWall = null;
-      this._syncSelection(); this._status('Wall deleted'); this._render();
-    } else if (this.selectedFloor) {
-      this._pushHistory();
-      this.floors = this.floors.filter(f => f !== this.selectedFloor);
-      this.selectedFloor = null;
-      this._syncSelection(); this._status('Floor deleted'); this._render();
-    } else if (this.selectedWire) {
-      this._pushHistory();
-      this.wires = this.wires.filter(w => w !== this.selectedWire);
-      this.selectedWire = null;
-      this._syncSelection(); this._status('Wire deleted'); this._render();
-    } else if (this.selectedPanel) {
-      this._pushHistory();
-      const panelId = this.selectedPanel.id;
-      const panelCircuits = this._getCircuitsForPanel(panelId).map(c => c.id);
-      this.circuits = this.circuits.filter(c => c.panelId !== panelId);
-      this.electricalSymbols.forEach(sym => {
-        if (panelCircuits.includes(sym.circuitId)) sym.circuitId = '';
-      });
-      this.panels = this.panels.filter(p => p !== this.selectedPanel);
-      this.selectedPanel = null;
-      this._refreshCircuitSelects();
-      this._syncSelection(); this._status('Panel deleted'); this._render();
-    } else if (this.selectedElectricalSymbol) {
-      this._pushHistory();
-      this.electricalSymbols = this.electricalSymbols.filter(s => s !== this.selectedElectricalSymbol);
-      this.selectedElectricalSymbol = null;
-      this._syncSelection(); this._status('Symbol deleted'); this._render();
-    } else if (this.selectedPipe) {
-      this._pushHistory();
-      this.pipes = this.pipes.filter(p => p !== this.selectedPipe);
-      this.selectedPipe = null;
-      this._syncSelection(); this._status('Pipe deleted'); this._render();
-    } else if (this.selectedPlumbingSymbol) {
-      this._pushHistory();
-      this.plumbingSymbols = this.plumbingSymbols.filter(s => s !== this.selectedPlumbingSymbol);
-      this.selectedPlumbingSymbol = null;
-      this._syncSelection(); this._status('Symbol deleted'); this._render();
-    } else if (this.selectedFurniture) {
-      this._pushHistory();
-      const idx = this.furnitureItems.indexOf(this.selectedFurniture);
-      if (idx !== -1) this.furnitureItems.splice(idx, 1);
-      this.selectedFurniture = null;
-      this._syncSelection(); this._status('Furniture deleted'); this._render();
-    }
-  }
+  _selectAt(wx, wy) { this.selection.selectAt(wx, wy); }
+  _eraseAt(wx, wy) { this.selection.eraseAt(wx, wy); }
+  _deleteSelected() { this.selection.deleteSelected(); }
 
   // ── Dragging (Select Tool) ──────────────────
   _tryStartDrag(wx, wy, snapped) {
@@ -2028,7 +1766,7 @@ export class App {
       if (el) el.style.display = 'none';
     }
 
-    const panelId = getToolPanelId(tool);
+    const panelId = TOOL_PANEL_MAP[tool] || '';
     if (panelId) {
       const el = this.$(panelId);
       if (el) el.style.display = '';
@@ -2057,245 +1795,9 @@ export class App {
     this._render();
   }
 
-  _syncSelection() {
-    for (const id of ALL_TOOL_PROP_PANEL_IDS) {
-      const el = this.$(id);
-      if (el) el.style.display = 'none';
-    }
-
-    if (this.selectedLabel) {
-      const lp = this.$('sel-label-props');
-      if (lp) {
-        lp.style.display = '';
-        const lb = this.selectedLabel;
-        this.$('sel-label-text').value = lb.text;
-        this.$$('#sel-label-fontsize-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseInt(b.dataset.value) === lb.fontSize));
-      }
-    } else if (this.selectedWall) {
-      this.$('selection-props').style.display = '';
-      const w = this.selectedWall;
-      this.$('sel-length').textContent = Geom.formatLength(w.length);
-      this.$('sel-thickness').textContent = w.thickness + 'cm';
-      this.$('sel-material').textContent = w.material;
-      this.$('sel-angle').textContent = Math.abs(w.angleDeg).toFixed(1) + '\u00B0';
-      this.$$('#sel-thickness-group .prop-btn').forEach(b =>
-        b.classList.toggle('active', parseInt(b.dataset.value) === w.thickness));
-      this.$$('#sel-material-group .material-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.material === w.material));
-    } else if (this.selectedDoor) {
-      const dp = this.$('sel-door-props');
-      if (dp) {
-        dp.style.display = '';
-        const door = this.selectedDoor;
-        this.$('sel-door-width').textContent = door.width + 'cm';
-        this.$('sel-door-type').textContent = door.doorType === 'single' ? 'Single' : door.doorType === 'double' ? 'Double' : 'Sliding';
-        this.$('sel-door-hinge').textContent = door.hingeSide === 'left' ? 'Left' : 'Right';
-        this.$$('#sel-door-type-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', b.dataset.value === door.doorType));
-        this.$$('#sel-door-width-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseInt(b.dataset.value) === door.width));
-        const hingeWrap = this.$('sel-door-hinge-wrap');
-        const openWrap = this.$('sel-door-opendir-wrap');
-        if (hingeWrap) hingeWrap.style.display = door.doorType === 'single' ? '' : 'none';
-        if (openWrap) openWrap.style.display = door.doorType === 'sliding' ? 'none' : '';
-      }
-    } else if (this.selectedWindow) {
-      const wp = this.$('sel-window-props');
-      if (wp) {
-        wp.style.display = '';
-        const win = this.selectedWindow;
-        this.$('sel-window-width').textContent = win.width + 'cm';
-        this.$('sel-window-type').textContent = win.windowType === 'fixed' ? 'Fixed' : win.windowType === 'sliding' ? 'Sliding' : 'Casement';
-        this.$$('#sel-window-type-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', b.dataset.value === win.windowType));
-        this.$$('#sel-window-width-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseInt(b.dataset.value) === win.width));
-      }
-    } else if (this.selectedStair) {
-      const sp = this.$('sel-stair-props');
-      if (sp) {
-        sp.style.display = '';
-        this.$('sel-stair-size').textContent =
-          `${this.selectedStair.width}x${this.selectedStair.length} cm`;
-        this.$('sel-stair-rot').textContent = this.selectedStair.rotation + '\u00B0';
-        this.$$('#sel-stair-rotation-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseInt(b.dataset.value) === this.selectedStair.rotation));
-      }
-    } else if (this.selectedPanel) {
-      const pp = this.$('sel-panel-props');
-      if (pp) {
-        pp.style.display = '';
-        const panel = this.selectedPanel;
-        const status = this._getPanelElectricalStatus(panel.id);
-        this.$('sel-panel-name').value = panel.name;
-        this.$('sel-panel-voltage').textContent = `${panel.voltage}V`;
-        this.$('sel-panel-phases').textContent = `${panel.phases}\u03C6`;
-        this.$('sel-panel-main-breaker').textContent = `${panel.mainBreakerA}A`;
-        this.$('sel-panel-main-breaker-input').value = String(panel.mainBreakerA);
-        const alert = this.$('sel-panel-alert');
-        if (alert && status) {
-          if (!status.hasIssue) {
-            alert.className = 'panel-alert ok';
-            alert.textContent = `OK: total ${status.totalLoadA.toFixed(1)}A / main ${status.mainBreakerA}A`;
-          } else {
-            const issues = [];
-            if (status.panelOverload) {
-              issues.push(`Panel overload: ${status.totalLoadA.toFixed(1)}A > ${status.mainBreakerA}A`);
-            }
-            for (const s of status.overloadedCircuits) {
-              issues.push(`${s.circuit.name}: ${s.loadA.toFixed(1)}A > ${s.breakerA}A`);
-            }
-            alert.className = 'panel-alert warn';
-            alert.textContent = issues.join(' | ');
-          }
-        }
-        this._renderSelectedPanelCircuits(panel);
-      }
-    } else if (this.selectedWire) {
-      const wp = this.$('sel-wire-props');
-      if (wp) {
-        wp.style.display = '';
-        this.$('sel-wire-gauge').textContent = this.selectedWire.gauge + 'mm\u00B2';
-        this.$('sel-wire-length').textContent = Geom.formatLength(this.selectedWire.totalLength);
-        this.$('sel-wire-points').textContent = this.selectedWire.points.length;
-        this.$$('#sel-wire-gauge-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseFloat(b.dataset.value) === this.selectedWire.gauge));
-      }
-    } else if (this.selectedElectricalSymbol) {
-      const ep = this.$('sel-elec-symbol-props');
-      if (ep) {
-        ep.style.display = '';
-        this.$('sel-elec-symbol-type').textContent = CONFIG.ELECTRICAL_SYMBOL_LABELS[this.selectedElectricalSymbol.symbolType] || this.selectedElectricalSymbol.symbolType;
-        const circuit = this.circuits.find(c => c.id === this.selectedElectricalSymbol.circuitId);
-        this.$('sel-elec-symbol-circuit').textContent = circuit ? `${circuit.name}` : 'None';
-        const load = Math.max(0.1, Number(this.selectedElectricalSymbol.amperageA) || CONFIG.DEFAULT_SYMBOL_AMPERAGE_A);
-        this.$('sel-elec-load-a').value = String(load);
-        this._fillCircuitSelect('sel-elec-circuit-select', this.selectedElectricalSymbol.circuitId);
-        this.$$('#sel-elec-symbol-rotation-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseInt(b.dataset.value) === this.selectedElectricalSymbol.rotation));
-      }
-    } else if (this.selectedPipe) {
-      const pp = this.$('sel-pipe-props');
-      if (pp) {
-        pp.style.display = '';
-        this.$('sel-pipe-type').textContent = CONFIG.PIPE_LABELS[this.selectedPipe.pipeType] || this.selectedPipe.pipeType;
-        this.$('sel-pipe-diameter').textContent = '\u00D8' + this.selectedPipe.diameter + 'mm';
-        this.$('sel-pipe-length').textContent = Geom.formatLength(this.selectedPipe.totalLength);
-        this.$$('#sel-pipe-flow-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseInt(b.dataset.value) === (this.selectedPipe.flowDir || 1)));
-      }
-    } else if (this.selectedPlumbingSymbol) {
-      const pp = this.$('sel-plumb-symbol-props');
-      if (pp) {
-        pp.style.display = '';
-        this.$('sel-plumb-symbol-type').textContent = CONFIG.PLUMBING_SYMBOL_LABELS[this.selectedPlumbingSymbol.symbolType] || this.selectedPlumbingSymbol.symbolType;
-        this.$$('#sel-plumb-symbol-rotation-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseInt(b.dataset.value) === this.selectedPlumbingSymbol.rotation));
-      }
-    } else if (this.selectedFurniture) {
-      const fp = this.$('sel-furniture-props');
-      if (fp) {
-        fp.style.display = '';
-        const cat = CONFIG.FURNITURE_CATALOG[this.selectedFurniture.furnitureType];
-        this.$('sel-furniture-type').textContent = cat ? cat.label : this.selectedFurniture.furnitureType;
-        this.$('sel-furniture-size').textContent = cat ? `${cat.w}×${cat.d} cm` : '—';
-        this.$$('#sel-furniture-rotation-group .prop-btn').forEach(b =>
-          b.classList.toggle('active', parseInt(b.dataset.value) === this.selectedFurniture.rotation));
-      }
-    } else {
-      // Show default tool panel
-      const panelId = getToolPanelId(this.activeTool);
-      if (panelId) {
-        const el = this.$(panelId);
-        if (el) el.style.display = '';
-      }
-    }
-  }
-
-  _fillCircuitSelect(selectId, selectedId = '') {
-    const select = this.$(selectId);
-    if (!select) return;
-    const chosen = selectedId || '';
-    select.innerHTML = '<option value="">No circuit</option>';
-    for (const c of this.circuits) {
-      const panel = this.panels.find(p => p.id === c.panelId);
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = panel ? `${panel.name} / ${c.name}` : c.name;
-      select.appendChild(opt);
-    }
-    select.value = chosen;
-    if (select.value !== chosen) select.value = '';
-  }
-
-  _refreshCircuitSelects() {
-    this._fillCircuitSelect('elec-circuit-select', this.electricalCircuitId);
-    if (!this.electricalCircuitId && this.circuits.length) {
-      this.electricalCircuitId = this.circuits[0].id;
-      this._fillCircuitSelect('elec-circuit-select', this.electricalCircuitId);
-    }
-    if (this.selectedElectricalSymbol) {
-      this._fillCircuitSelect('sel-elec-circuit-select', this.selectedElectricalSymbol.circuitId);
-    }
-  }
-
-  _renderSelectedPanelCircuits(panel) {
-    const container = this.$('sel-panel-circuits-list');
-    if (!container) return;
-    const status = this._getPanelElectricalStatus(panel.id);
-    const circuits = status ? status.circuitStatuses : [];
-    container.innerHTML = '';
-
-    if (!circuits.length) {
-      container.innerHTML = '<div class="bom-empty">No circuits</div>';
-      return;
-    }
-
-    for (const s of circuits) {
-      const c = s.circuit;
-      const loadA = s.loadA;
-      const warnStyle = s.overload ? 'background:rgba(207,77,58,0.07);border-bottom-color:#e6b0a8;' : '';
-      const loadStyle = s.overload ? 'color:#b33221;font-weight:700;' : '';
-      const warnMark = s.overload ? ' !' : '';
-      const row = document.createElement('div');
-      row.className = 'info-row';
-      row.style.cssText = `align-items:center;${warnStyle}`;
-      row.innerHTML =
-        `<input data-circuit-id="${c.id}" data-field="name" value="${c.name}" style="width:44%;padding:3px 5px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">` +
-        `<input data-circuit-id="${c.id}" data-field="breakerA" type="number" min="1" value="${c.breakerA}" style="width:20%;padding:3px 5px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">` +
-        `<span style="width:24%;text-align:right;font-size:11px;font-family:var(--font-mono);${loadStyle}">${loadA.toFixed(1)}A${warnMark}</span>` +
-        `<button data-circuit-id="${c.id}" data-action="delete" class="prop-btn" style="padding:2px 6px">×</button>`;
-      container.appendChild(row);
-    }
-
-    container.querySelectorAll('input[data-circuit-id]').forEach(input => {
-      input.addEventListener('change', () => {
-        const id = input.dataset.circuitId;
-        const field = input.dataset.field;
-        const circuit = this.circuits.find(c => c.id === id);
-        if (!circuit) return;
-        this._pushHistory();
-        if (field === 'name') circuit.name = input.value || circuit.name;
-        if (field === 'breakerA') circuit.breakerA = Math.max(1, parseInt(input.value) || circuit.breakerA);
-        this._refreshCircuitSelects();
-        this._syncSelection();
-        this._render();
-      });
-    });
-
-    container.querySelectorAll('button[data-action="delete"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.circuitId;
-        this._pushHistory();
-        this.circuits = this.circuits.filter(c => c.id !== id);
-        this.electricalSymbols.forEach(sym => { if (sym.circuitId === id) sym.circuitId = ''; });
-        this._refreshCircuitSelects();
-        this._syncSelection();
-        this._render();
-      });
-    });
-  }
+  _syncSelection() { this.selection.syncUI(); }
+  _fillCircuitSelect(id, sel) { this.selection.fillCircuitSelect(id, sel); }
+  _refreshCircuitSelects() { this.selection.refreshCircuitSelects(); }
 
   _status(text) {
     this.$('status-text').textContent = text;

@@ -5,7 +5,8 @@ import { drawFurnitureShape } from './FurnitureShapes.js';
 import { drawElecSymbolShape } from './ElectricalShapes.js';
 import { drawPlumbSymbolShape } from './PlumbingShapes.js';
 
-const { SELECTION, TEXT } = CONFIG.COLORS;
+const C = CONFIG.COLORS;
+const { SELECTION, TEXT } = C;
 
 export class Renderer {
   constructor(canvas) {
@@ -59,7 +60,7 @@ export class Renderer {
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
 
-    ctx.fillStyle = '#fefefe';
+    ctx.fillStyle = C.CANVAS_BG;
     ctx.fillRect(0, 0, cw, ch);
 
     ctx.save();
@@ -76,7 +77,7 @@ export class Renderer {
     // Ghost floor (floor below)
     if (state.ghostWalls && state.ghostWalls.length) {
       ctx.globalAlpha = 0.12;
-      this._drawCornerJoins(ctx, state.ghostWalls, state.zoom, '#c5c0b8');
+      this._drawCornerJoins(ctx, state.ghostWalls, state.zoom, C.GHOST);
       for (const wall of state.ghostWalls) {
         this._drawWallGhost(ctx, wall, state.zoom);
       }
@@ -201,21 +202,21 @@ export class Renderer {
     const endX = Math.ceil(bottomRight.x / gs) * gs;
     const endY = Math.ceil(bottomRight.y / gs) * gs;
 
-    ctx.strokeStyle = '#eeece8';
+    ctx.strokeStyle = C.GRID_MINOR;
     ctx.lineWidth = 0.5 / zoom;
     ctx.beginPath();
     for (let x = startX; x <= endX; x += gs) { if (x % majorEvery === 0) continue; ctx.moveTo(x, startY); ctx.lineTo(x, endY); }
     for (let y = startY; y <= endY; y += gs) { if (y % majorEvery === 0) continue; ctx.moveTo(startX, y); ctx.lineTo(endX, y); }
     ctx.stroke();
 
-    ctx.strokeStyle = '#ddd9d3';
+    ctx.strokeStyle = C.GRID_MAJOR;
     ctx.lineWidth = 1 / zoom;
     ctx.beginPath();
     for (let x = startX; x <= endX; x += gs) { if (x % majorEvery !== 0) continue; ctx.moveTo(x, startY); ctx.lineTo(x, endY); }
     for (let y = startY; y <= endY; y += gs) { if (y % majorEvery !== 0) continue; ctx.moveTo(startX, y); ctx.lineTo(endX, y); }
     ctx.stroke();
 
-    ctx.strokeStyle = '#c0bdb6';
+    ctx.strokeStyle = C.GRID_AXIS;
     ctx.lineWidth = 1.5 / zoom;
     ctx.beginPath();
     ctx.moveTo(startX, 0); ctx.lineTo(endX, 0);
@@ -223,7 +224,7 @@ export class Renderer {
     ctx.stroke();
 
     if (zoom > 0.3) {
-      ctx.fillStyle = '#b0aca5';
+      ctx.fillStyle = C.GRID_LABEL;
       ctx.font = `${11 / zoom}px ${CONFIG.FONT_FAMILY}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       for (let x = startX; x <= endX; x += majorEvery) {
@@ -246,9 +247,9 @@ export class Renderer {
     ctx.moveTo(rect[0].x, rect[0].y);
     for (let i = 1; i < rect.length; i++) ctx.lineTo(rect[i].x, rect[i].y);
     ctx.closePath();
-    ctx.fillStyle = Materials.getWall(wall.material, ctx) || '#95a5a6';
+    ctx.fillStyle = Materials.getWall(wall.material, ctx) || C.WALL_FALLBACK;
     ctx.fill();
-    ctx.strokeStyle = isSelected ? SELECTION : isHovered ? '#9ab3c5' : TEXT;
+    ctx.strokeStyle = isSelected ? SELECTION : isHovered ? C.WALL_HOVER : TEXT;
     ctx.lineWidth = isSelected ? 2.5 / zoom : 1.5 / zoom;
     ctx.stroke();
     if (isSelected) {
@@ -271,9 +272,9 @@ export class Renderer {
     ctx.moveTo(rect[0].x, rect[0].y);
     for (let i = 1; i < rect.length; i++) ctx.lineTo(rect[i].x, rect[i].y);
     ctx.closePath();
-    ctx.fillStyle = '#c5c0b8';
+    ctx.fillStyle = C.GHOST;
     ctx.fill();
-    ctx.strokeStyle = '#b0aaa0';
+    ctx.strokeStyle = C.GHOST_STROKE;
     ctx.lineWidth = 1 / zoom;
     ctx.stroke();
     ctx.restore();
@@ -291,7 +292,7 @@ export class Renderer {
       ctx.moveTo(poly[0].x, poly[0].y);
       for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
       ctx.closePath();
-      ctx.fillStyle = overrideColor || Materials.getWall(material, ctx) || '#95a5a6';
+      ctx.fillStyle = overrideColor || Materials.getWall(material, ctx) || C.WALL_FALLBACK;
       ctx.fill();
       ctx.restore();
     }
@@ -304,7 +305,7 @@ export class Renderer {
     ctx.moveTo(floor.polygon[0].x, floor.polygon[0].y);
     for (let i = 1; i < floor.polygon.length; i++) ctx.lineTo(floor.polygon[i].x, floor.polygon[i].y);
     ctx.closePath();
-    ctx.fillStyle = Materials.getFloor(floor.material, ctx) || '#f0e8d8';
+    ctx.fillStyle = Materials.getFloor(floor.material, ctx) || C.FLOOR_FALLBACK;
     ctx.fill();
     if (isSelected) {
       ctx.strokeStyle = SELECTION; ctx.lineWidth = 2 / zoom;
@@ -332,7 +333,7 @@ export class Renderer {
 
     // Gap — erase wall at door position
     ctx.save();
-    ctx.fillStyle = '#fefefe';
+    ctx.fillStyle = C.CANVAS_BG;
     const gpdx = Math.cos(perpAngle) * halfThick;
     const gpdy = Math.sin(perpAngle) * halfThick;
     ctx.beginPath();
@@ -509,7 +510,7 @@ export class Renderer {
     const gpdy = Math.sin(perpAngle) * halfThick;
 
     ctx.save();
-    ctx.fillStyle = '#fefefe';
+    ctx.fillStyle = C.CANVAS_BG;
     ctx.beginPath();
     ctx.moveTo(p1.x + gpdx, p1.y + gpdy);
     ctx.lineTo(p2.x + gpdx, p2.y + gpdy);
@@ -531,7 +532,7 @@ export class Renderer {
     const ndx = Math.cos(perpAngle);
     const ndy = Math.sin(perpAngle);
     const glassOffset = wall.thickness * 0.3;
-    const glassColor = isSelected ? CONFIG.COLORS.SELECTION : '#5896b0';
+    const glassColor = isSelected ? CONFIG.COLORS.SELECTION : C.WINDOW_GLASS;
 
     if (winType === 'fixed') {
       this._drawWindowFixed(ctx, p1, p2, ndx, ndy, glassOffset, glassColor, zoom);
@@ -631,10 +632,10 @@ export class Renderer {
     ctx.translate(stair.x, stair.y);
     ctx.rotate(stair.rotation * Math.PI / 180);
 
-    ctx.fillStyle = '#f5f2ec';
+    ctx.fillStyle = C.STAIR_FILL;
     ctx.fillRect(0, 0, stair.width, stair.length);
 
-    ctx.strokeStyle = '#c5c0b8';
+    ctx.strokeStyle = C.STAIR_STEP;
     ctx.lineWidth = 0.8 / zoom;
     const count = stair.stepCount;
     for (let i = 0; i <= count; i++) {
@@ -663,7 +664,7 @@ export class Renderer {
     ctx.fillStyle = TEXT;
     ctx.fill();
 
-    ctx.fillStyle = '#8a8580';
+    ctx.fillStyle = C.STAIR_TEXT;
     const fontSize = Math.min(12, stair.width * 0.12);
     ctx.font = `600 ${fontSize}px ${CONFIG.FONT_FAMILY}`;
     ctx.textAlign = 'center';
@@ -685,42 +686,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  drawStairExport(ctx, stair) {
-    ctx.save();
-    ctx.translate(stair.x, stair.y);
-    ctx.rotate(stair.rotation * Math.PI / 180);
-
-    ctx.fillStyle = '#f5f2ec';
-    ctx.fillRect(0, 0, stair.width, stair.length);
-
-    ctx.strokeStyle = '#c5c0b8'; ctx.lineWidth = 0.8;
-    const count = stair.stepCount;
-    for (let i = 0; i <= count; i++) {
-      const y = i * stair.stepDepth;
-      if (y > stair.length) break;
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(stair.width, y); ctx.stroke();
-    }
-
-    const midX = stair.width / 2;
-    ctx.strokeStyle = TEXT; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(midX, stair.length * 0.85); ctx.lineTo(midX, stair.length * 0.15); ctx.stroke();
-
-    const hs = Math.min(12, stair.width * 0.12);
-    ctx.beginPath();
-    ctx.moveTo(midX, stair.length * 0.15);
-    ctx.lineTo(midX - hs, stair.length * 0.15 + hs * 1.8);
-    ctx.lineTo(midX + hs, stair.length * 0.15 + hs * 1.8);
-    ctx.closePath(); ctx.fillStyle = TEXT; ctx.fill();
-
-    ctx.fillStyle = '#8a8580';
-    ctx.font = `600 ${Math.min(12, stair.width * 0.12)}px ${CONFIG.FONT_FAMILY}`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('UP', midX, stair.length * 0.55);
-
-    ctx.strokeStyle = TEXT; ctx.lineWidth = 1.5;
-    ctx.strokeRect(0, 0, stair.width, stair.length);
-    ctx.restore();
-  }
+  drawStairExport(ctx, stair) { this._drawStair(ctx, stair, false, 1); }
 
   // ── Labels ──────────────────────────────
   _drawLabel(ctx, label, isSelected, zoom) {
@@ -744,15 +710,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  drawLabelExport(ctx, label) {
-    ctx.save();
-    ctx.font = `500 ${label.fontSize}px ${CONFIG.FONT_FAMILY}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = TEXT;
-    ctx.fillText(label.text, label.x, label.y);
-    ctx.restore();
-  }
+  drawLabelExport(ctx, label) { this._drawLabel(ctx, label, false, 1); }
 
   // ── Wires ─────────────────────────────────
   _drawWire(ctx, wire, isSelected, zoom) {
@@ -810,43 +768,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  drawWireExport(ctx, wire) {
-    if (wire.points.length < 2) return;
-    const color = CONFIG.WIRE_COLORS;
-    const thickness = CONFIG.WIRE_THICKNESS[wire.gauge] || 2;
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = thickness;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(wire.points[0].x, wire.points[0].y);
-    for (let i = 1; i < wire.points.length; i++) {
-      ctx.lineTo(wire.points[i].x, wire.points[i].y);
-    }
-    ctx.stroke();
-
-    for (const p of wire.points) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-    }
-
-    if (wire.points.length >= 2) {
-      const mid = Math.floor(wire.points.length / 2);
-      const p0 = wire.points[mid - 1];
-      const p1 = wire.points[mid];
-      const mx = (p0.x + p1.x) / 2;
-      const my = (p0.y + p1.y) / 2;
-      this._drawTextWithBg(ctx, `${wire.gauge}mm\u00B2`, mx, my, {
-        fontSize: 10, textColor: CONFIG.COLORS.ELEC_LABEL,
-      });
-    }
-
-    ctx.restore();
-  }
+  drawWireExport(ctx, wire) { this._drawWire(ctx, wire, false, 1); }
 
   // ── Electrical Symbols ────────────────────
   _getPanelLoadStatus(panel, state) {
@@ -889,7 +811,7 @@ export class Renderer {
       : danger
         ? 'rgba(207,77,58,0.09)'
         : 'rgba(245,166,35,0.08)';
-    ctx.strokeStyle = isSelected ? SELECTION : (danger ? '#cf4d3a' : CONFIG.COLORS.WIRE_LABEL);
+    ctx.strokeStyle = isSelected ? SELECTION : (danger ? C.PANEL_DANGER : CONFIG.COLORS.WIRE_LABEL);
     ctx.lineWidth = (isSelected ? 2 : 1.4) / zoom;
     ctx.fillRect(-w / 2, -h / 2, w, h);
     ctx.strokeRect(-w / 2, -h / 2, w, h);
@@ -902,14 +824,14 @@ export class Renderer {
     ctx.font = `${Math.max(9, 11 / zoom)}px ${CONFIG.FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = isSelected ? '#6a8599' : (danger ? '#b33221' : '#9b6c10');
+    ctx.fillStyle = isSelected ? '#6a8599' : (danger ? C.PANEL_DANGER_TEXT : C.PANEL_NORMAL_TEXT);
     ctx.fillText(panel.name, 0, 0);
     ctx.font = `${Math.max(7, 9 / zoom)}px ${CONFIG.FONT_FAMILY}`;
     ctx.fillText(`${status.totalLoadA.toFixed(1)}A`, 0, h / 2 + (8 / zoom));
     if (danger) {
       ctx.beginPath();
       ctx.arc(w / 2 - 6, -h / 2 + 6, 4 / zoom, 0, Math.PI * 2);
-      ctx.fillStyle = '#cf4d3a';
+      ctx.fillStyle = C.PANEL_DANGER;
       ctx.fill();
       ctx.fillStyle = '#fff';
       ctx.font = `700 ${Math.max(7, 8 / zoom)}px ${CONFIG.FONT_FAMILY}`;
@@ -1082,48 +1004,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  drawPipeExport(ctx, pipe) {
-    if (pipe.points.length < 2) return;
-    const color = CONFIG.PIPE_COLORS[pipe.pipeType] || '#4a90d9';
-    const dash = CONFIG.PIPE_DASH[pipe.pipeType] || [];
-    const thickness = CONFIG.PIPE_THICKNESS || 2.5;
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = thickness;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    if (dash.length) ctx.setLineDash(dash);
-    ctx.beginPath();
-    ctx.moveTo(pipe.points[0].x, pipe.points[0].y);
-    for (let i = 1; i < pipe.points.length; i++) {
-      ctx.lineTo(pipe.points[i].x, pipe.points[i].y);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    for (const p of pipe.points) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-    }
-
-    if (pipe.points.length >= 2) {
-      const mid = Math.floor(pipe.points.length / 2);
-      const p0 = pipe.points[mid - 1];
-      const p1 = pipe.points[mid];
-      const mx = (p0.x + p1.x) / 2;
-      const my = (p0.y + p1.y) / 2;
-      this._drawTextWithBg(ctx, `\u00D8${pipe.diameter}`, mx, my, {
-        fontSize: 10, textColor: color,
-      });
-    }
-
-    this._drawPipeFlowArrows(ctx, pipe, 1, color);
-
-    ctx.restore();
-  }
+  drawPipeExport(ctx, pipe) { this._drawPipe(ctx, pipe, false, 1); }
 
   // ── Plumbing Symbols ──────────────────────
   _drawPlumbingSymbol(ctx, sym, isSelected, zoom) {
@@ -1152,13 +1033,7 @@ export class Renderer {
     }
   }
 
-  drawPlumbingSymbolExport(ctx, sym) {
-    ctx.save();
-    ctx.translate(sym.x, sym.y);
-    ctx.rotate(sym.rotation * Math.PI / 180);
-    drawPlumbSymbolShape(ctx, sym.symbolType, 10, CONFIG.LAYER_COLORS.plumbing, 1);
-    ctx.restore();
-  }
+  drawPlumbingSymbolExport(ctx, sym) { this._drawPlumbingSymbol(ctx, sym, false, 1); }
 
   // ── Furniture Layer ────────────────────────
   _drawFurnitureLayer(ctx, layer, state, isActive) {
@@ -1200,16 +1075,7 @@ export class Renderer {
 
 
 
-  drawFurnitureExport(ctx, item) {
-    const catalog = CONFIG.FURNITURE_CATALOG[item.furnitureType];
-    if (!catalog) return;
-    ctx.save();
-    ctx.translate(item.x, item.y);
-    ctx.rotate(item.rotation * Math.PI / 180);
-    const color = catalog.color || CONFIG.LAYER_COLORS.furniture;
-    drawFurnitureShape(ctx, item.furnitureType, catalog.w, catalog.d, color, 1, catalog.topLabel || catalog.label);
-    ctx.restore();
-  }
+  drawFurnitureExport(ctx, item) { this._drawFurnitureItem(ctx, item, false, 1); }
 
   // ── Floor Polygon Preview ──────────────────
   _drawFloorPolygonPreview(ctx, state) {
@@ -1226,13 +1092,13 @@ export class Renderer {
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
       if (state.mouseWorld) ctx.lineTo(state.mouseWorld.x, state.mouseWorld.y);
       ctx.closePath();
-      ctx.fillStyle = '#d4a574';
+      ctx.fillStyle = C.FLOOR_PREVIEW_FILL;
       ctx.fill();
     }
 
     // Outline
     ctx.globalAlpha = 0.7;
-    ctx.strokeStyle = '#c8956c';
+    ctx.strokeStyle = C.FLOOR_PREVIEW;
     ctx.lineWidth = 2 / state.zoom;
     ctx.setLineDash([6 / state.zoom, 4 / state.zoom]);
     ctx.beginPath();
@@ -1248,7 +1114,7 @@ export class Renderer {
     for (const p of pts) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 4 / state.zoom, 0, Math.PI * 2);
-      ctx.fillStyle = '#c8956c';
+      ctx.fillStyle = C.FLOOR_PREVIEW;
       ctx.fill();
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 1.5 / state.zoom;
@@ -1261,7 +1127,7 @@ export class Renderer {
       if (d < 10) {
         ctx.beginPath();
         ctx.arc(pts[0].x, pts[0].y, 8 / state.zoom, 0, Math.PI * 2);
-        ctx.strokeStyle = '#c8956c';
+        ctx.strokeStyle = C.FLOOR_PREVIEW;
         ctx.lineWidth = 2.5 / state.zoom;
         ctx.stroke();
       }
@@ -1349,7 +1215,7 @@ export class Renderer {
     ctx.font = `600 ${fontSize}px ${CONFIG.FONT_FAMILY}`;
     const tw = ctx.measureText(text).width;
     const halfLen = length / 2;
-    ctx.strokeStyle = '#b0aca5'; ctx.lineWidth = 0.8 / zoom;
+    ctx.strokeStyle = C.GRID_LABEL; ctx.lineWidth = 0.8 / zoom;
     ctx.beginPath();
     ctx.moveTo(-halfLen, -3 / zoom); ctx.lineTo(-halfLen, 3 / zoom);
     ctx.moveTo(halfLen, -3 / zoom); ctx.lineTo(halfLen, 3 / zoom);
@@ -1376,7 +1242,7 @@ export class Renderer {
     ctx.closePath();
 
     ctx.globalAlpha = 0.5;
-    ctx.fillStyle = Materials.getWall(state.wallMaterial, ctx) || '#95a5a6';
+    ctx.fillStyle = Materials.getWall(state.wallMaterial, ctx) || C.WALL_FALLBACK;
     ctx.fill();
     ctx.globalAlpha = 0.8;
     ctx.strokeStyle = SELECTION; ctx.lineWidth = 1.5 / state.zoom;
@@ -1414,7 +1280,7 @@ export class Renderer {
       ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
       ctx.closePath();
       ctx.fillStyle = 'rgba(139,184,158,0.35)'; ctx.fill();
-      ctx.strokeStyle = '#8bb89e'; ctx.lineWidth = 1.5 / zoom; ctx.stroke();
+      ctx.strokeStyle = C.SNAP_ENDPOINT; ctx.lineWidth = 1.5 / zoom; ctx.stroke();
     } else {
       ctx.strokeStyle = 'rgba(123,150,170,0.45)'; ctx.lineWidth = 1 / zoom;
       ctx.beginPath();
@@ -1442,7 +1308,7 @@ export class Renderer {
     ctx.fillStyle = 'rgba(123, 150, 170, 0.03)';
     ctx.fillRect(x0, y0, w, h);
 
-    ctx.strokeStyle = '#c5c0b8';
+    ctx.strokeStyle = C.TERRAIN_BORDER;
     ctx.lineWidth = 1.5 / zoom;
     ctx.setLineDash([8 / zoom, 4 / zoom]);
     ctx.strokeRect(x0, y0, w, h);
@@ -1450,7 +1316,7 @@ export class Renderer {
 
     const fontSize = Math.max(10, 12 / zoom);
     ctx.font = `500 ${fontSize}px ${CONFIG.FONT_FAMILY}`;
-    ctx.fillStyle = '#b0aca5';
+    ctx.fillStyle = C.GRID_LABEL;
 
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     const widthLabel = (w / 100).toFixed(w % 100 === 0 ? 0 : 1) + 'm';
@@ -1472,7 +1338,7 @@ export class Renderer {
     const sx = state.panX;
     const sy = state.panY;
     ctx.save();
-    ctx.fillStyle = '#b0aca5';
+    ctx.fillStyle = C.GRID_LABEL;
     ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill();
     ctx.font = `10px ${CONFIG.FONT_FAMILY}`;
     ctx.fillText('0,0', sx + 6, sy + 4);
