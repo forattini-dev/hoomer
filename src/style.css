@@ -1123,17 +1123,18 @@ main {
   }
 
   .layer-tab {
-    min-width: 84px;
+    width: var(--touch-target);
+    min-width: var(--touch-target);
     min-height: 40px;
-    padding: 0 12px;
+    padding: 0;
     border-radius: 10px;
     justify-content: center;
-    gap: 4px;
+    gap: 0;
   }
 
   .layer-tab .layer-icon {
-    font-size: 14px;
-    width: 14px;
+    font-size: 16px;
+    width: 16px;
   }
 
   .layer-tab .layer-label-long {
@@ -1141,26 +1142,15 @@ main {
   }
 
   .layer-label-short {
-    display: inline;
-    font-size: 11px;
-    white-space: nowrap;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    max-width: 58px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: none;
   }
 
   .layer-tab .layer-vis {
-    width: 24px;
-    height: 24px;
-    font-size: 13px;
-    border-radius: 4px;
+    display: none;
   }
 
   .layer-tab .layer-dot {
-    width: 9px;
-    height: 9px;
+    display: none;
   }
 
   .top-tab,
