@@ -1,33 +1,11 @@
-import { Geom } from './geometry.js';
+import { Polyline } from './Polyline.js';
 
-let nextId = 1;
-
-export class Pipe {
+export class Pipe extends Polyline {
   constructor(points = [], pipeType = 'cold', diameter = 25, flowDir = 1) {
-    this.points = points;
+    super(points);
     this.pipeType = pipeType;
     this.diameter = diameter;
     this.flowDir = flowDir; // 1 = forward (start->end), -1 = reverse
-    this.id = nextId++;
-  }
-
-  get totalLength() {
-    let len = 0;
-    for (let i = 1; i < this.points.length; i++) {
-      len += Geom.dist(this.points[i - 1].x, this.points[i - 1].y, this.points[i].x, this.points[i].y);
-    }
-    return len;
-  }
-
-  hitTest(px, py) {
-    const threshold = 6;
-    for (let i = 1; i < this.points.length; i++) {
-      const d = Geom.pointToSegmentDist(px, py,
-        this.points[i - 1].x, this.points[i - 1].y,
-        this.points[i].x, this.points[i].y);
-      if (d <= threshold) return true;
-    }
-    return false;
   }
 
   serialize() {
@@ -36,10 +14,13 @@ export class Pipe {
       pipeType: this.pipeType,
       diameter: this.diameter,
       flowDir: this.flowDir,
+      id: this.id,
     };
   }
 
   static fromData(d) {
-    return new Pipe(d.points, d.pipeType, d.diameter, d.flowDir || 1);
+    const pipe = new Pipe(d.points, d.pipeType, d.diameter, d.flowDir || 1);
+    if (d.id) pipe.id = d.id;
+    return pipe;
   }
 }

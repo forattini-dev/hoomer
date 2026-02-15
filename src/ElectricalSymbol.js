@@ -1,4 +1,4 @@
-let nextId = 1;
+import { nextId } from './IdGenerator.js';
 
 export class ElectricalSymbol {
   constructor(x, y, symbolType = 'outlet_low', rotation = 0, circuitId = '', amperageA = 10) {
@@ -8,7 +8,7 @@ export class ElectricalSymbol {
     this.rotation = rotation;
     this.circuitId = circuitId;
     this.amperageA = amperageA;
-    this.id = nextId++;
+    this.id = nextId();
   }
 
   hitTest(px, py) {
@@ -25,10 +25,20 @@ export class ElectricalSymbol {
       rotation: this.rotation,
       circuitId: this.circuitId,
       amperageA: this.amperageA,
+      id: this.id,
     };
   }
 
   static fromData(d) {
-    return new ElectricalSymbol(d.x, d.y, d.symbolType, d.rotation, d.circuitId || '', d.amperageA || 10);
+    const symbol = new ElectricalSymbol(
+      d.x,
+      d.y,
+      d.symbolType,
+      d.rotation,
+      d.circuitId || '',
+      d.amperageA || 10
+    );
+    if (d.id) symbol.id = d.id;
+    return symbol;
   }
 }

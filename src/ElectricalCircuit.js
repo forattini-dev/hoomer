@@ -1,4 +1,4 @@
-let nextId = 1;
+import { nextPrefixedId } from './IdGenerator.js';
 
 export class ElectricalCircuit {
   constructor(panelId, name = 'C1', breakerA = 20, poles = 1, curve = 'C') {
@@ -7,7 +7,7 @@ export class ElectricalCircuit {
     this.breakerA = breakerA;
     this.poles = poles;
     this.curve = curve;
-    this.id = `circuit_${nextId++}`;
+    this.id = nextPrefixedId('circuit');
   }
 
   serialize() {

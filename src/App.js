@@ -20,6 +20,83 @@ import { ShareManager } from './ShareManager.js';
 import { exportPNG, exportJSON } from './ExportManager.js';
 import { CostsView } from './CostsView.js';
 import { createLayeredStory, deserializeState, serializeState, storyName } from './AppStateIO.js';
+import { InputManager } from './InputManager.js';
+
+const TOOL_PANEL_MAP = Object.freeze({
+  wall: 'wall-props',
+  floor: 'floor-props',
+  door: 'door-props',
+  window: 'window-props',
+  stair: 'stair-props',
+  label: 'label-props',
+  panel: 'panel-props',
+  wire: 'wire-props',
+  electrical_symbol: 'electrical-symbol-props',
+  pipe: 'pipe-props',
+  plumbing_symbol: 'plumbing-symbol-props',
+  furniture_item: 'furniture-props',
+});
+
+const ALL_TOOL_PROP_PANEL_IDS = Object.freeze([
+  'wall-props',
+  'floor-props',
+  'door-props',
+  'window-props',
+  'stair-props',
+  'label-props',
+  'panel-props',
+  'wire-props',
+  'electrical-symbol-props',
+  'pipe-props',
+  'plumbing-symbol-props',
+  'furniture-props',
+  'selection-props',
+  'sel-door-props',
+  'sel-window-props',
+  'sel-stair-props',
+  'sel-label-props',
+  'sel-panel-props',
+  'sel-wire-props',
+  'sel-elec-symbol-props',
+  'sel-pipe-props',
+  'sel-plumb-symbol-props',
+  'sel-furniture-props',
+]);
+
+const TOOL_SHORTCUTS_BY_LAYER = Object.freeze({
+  structure: {
+    w: 'wall',
+    v: 'select',
+    f: 'floor',
+    e: 'eraser',
+    d: 'door',
+    n: 'window',
+    s: 'stair',
+    l: 'label',
+  },
+  electrical: {
+    q: 'panel',
+    w: 'wire',
+    s: 'electrical_symbol',
+    v: 'select',
+    e: 'eraser',
+  },
+  plumbing: {
+    p: 'pipe',
+    s: 'plumbing_symbol',
+    v: 'select',
+    e: 'eraser',
+  },
+  furniture: {
+    f: 'furniture_item',
+    v: 'select',
+    e: 'eraser',
+  },
+});
+
+function getToolPanelId(tool) {
+  return TOOL_PANEL_MAP[tool] || '';
+}
 
 export class App {
   constructor(root, hostElement, overrides = {}) {
@@ -112,13 +189,7 @@ export class App {
     this.isDrawing = false;
     this.drawStart = null;
     this.mouseWorld = { x: 0, y: 0 };
-    this.isPanning = false;
-    this.panStart = null;
     this.hoveredWall = null;
-
-    this._pointers = new Map();
-    this._pinchState = null;
-    this._primaryPointerId = null;
 
     // Dragging (select tool)
     this.isDragging = false;
@@ -154,27 +225,13 @@ export class App {
     // History
     this.history = new History();
 
-    this._supportsPointerEvents = typeof window !== 'undefined' && ('PointerEvent' in window);
-
-    // Bound handlers
-    this._onMouseDownBound = e => this._onMouseDown(e);
-    this._onMouseMoveBound = e => this._onMouseMove(e);
-    this._onMouseUpBound = e => this._onMouseUp(e);
-    this._onPointerDownBound = e => this._onPointerDown(e);
-    this._onPointerMoveBound = e => this._onPointerMove(e);
-    this._onPointerUpBound = e => this._onPointerUp(e);
-    this._onPointerCancelBound = e => this._onPointerCancel(e);
-    this._onWheelBound = e => this._onWheel(e);
-    this._onContextMenuBound = e => { e.preventDefault(); this._onRightClick(); };
-    this._onCanvasFocusBound = () => this.hostElement.focus();
-    this._onKeyDownBound = e => this._onKeyDown(e);
-    this._onKeyUpBound = e => this._onKeyUp(e);
-
     // Label edit state (avoid history spam)
     this._labelEditActive = false;
 
+    // Input handling (events, pan, zoom, pointer tracking)
+    this.input = new InputManager(this.canvas, this.hostElement, this);
+
     this.renderer.resize();
-    this._bindEvents();
     this._bindUI();
     this._bindMobileWalkControls();
     this._syncStoryTabs();
@@ -233,10 +290,6 @@ export class App {
   set furnitureItems(v) { this.currentStory.layers.furniture.items = v; }
 
   // ── Coordinates ─────────────────────────────
-  screenToWorld(sx, sy) {
-    return { x: (sx - this.panX) / this.zoom, y: (sy - this.panY) / this.zoom };
-  }
-
   _centerView() {
     if (this.axisOrigin === 'bottom-left') {
       const tw = this.terrainWidth * this.zoom;
@@ -247,36 +300,6 @@ export class App {
       this.panX = this.renderer.width / 2;
       this.panY = this.renderer.height / 2;
     }
-  }
-
-  // ── Snapping ────────────────────────────────
-  _snap(wx, wy) {
-    let x = wx, y = wy;
-    this.snapPoint = null;
-
-    if (this.snapEndpoint) {
-      let minDist = CONFIG.SNAP_RADIUS / this.zoom;
-      for (const wall of this.walls) {
-        for (const pt of [{ x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }]) {
-          const d = Geom.dist(wx, wy, pt.x, pt.y);
-          if (d < minDist) { minDist = d; x = pt.x; y = pt.y; this.snapPoint = { x, y, type: 'endpoint' }; }
-        }
-      }
-    }
-
-    if (this.snapGrid && !this.snapPoint) {
-      const s = Geom.snapToGrid(x, y, this.gridSize);
-      x = s.x; y = s.y;
-      this.snapPoint = { x, y, type: 'grid' };
-    }
-
-    if (this.snapAngle && this.isDrawing && this.drawStart) {
-      const s = Geom.snapAngle(this.drawStart.x, this.drawStart.y, x, y, this.snapAngleDeg);
-      x = s.x; y = s.y;
-      if (this.snapGrid) { const g = Geom.snapToGrid(x, y, this.gridSize); x = g.x; y = g.y; }
-    }
-
-    return { x, y };
   }
 
   // ── State Serialization ─────────────────────
@@ -390,9 +413,9 @@ export class App {
     for (let i = 0; i < CONFIG.LAYERS.length; i++) {
       const layerName = CONFIG.LAYERS[i];
       const color = CONFIG.LAYER_COLORS[layerName];
-      const meta = CONFIG.LAYER_META && CONFIG.LAYER_META[layerName] ? CONFIG.LAYER_META[layerName] : {};
-      const label = meta.label || CONFIG.LAYER_LABELS[layerName];
-      const shortLabel = meta.shortLabel || (CONFIG.LAYER_SHORT_LABELS && CONFIG.LAYER_SHORT_LABELS[layerName]) || label.slice(0, 1).toUpperCase();
+      const meta = CONFIG.LAYER_META[layerName] || {};
+      const label = meta.label || layerName;
+      const shortLabel = meta.shortLabel || label.slice(0, 1).toUpperCase();
       const icon = meta.icon || '';
       const isActive = this.activeLayer === layerName;
       const isVisible = this.currentStory.layers[layerName].visible;
@@ -492,60 +515,13 @@ export class App {
     if (removeBtn) removeBtn.disabled = this.stories.length <= 1;
   }
 
-  // ── Events ──────────────────────────────────
-  _bindEvents() {
-    if (this._supportsPointerEvents) {
-      this.canvas.addEventListener('pointerdown', this._onPointerDownBound, { passive: false });
-      this.canvas.addEventListener('pointermove', this._onPointerMoveBound, { passive: false });
-      this.canvas.addEventListener('pointerup', this._onPointerUpBound, { passive: false });
-      this.canvas.addEventListener('pointercancel', this._onPointerCancelBound);
-      this.canvas.addEventListener('pointerleave', this._onPointerCancelBound);
-      this.canvas.addEventListener('pointerout', this._onPointerCancelBound);
-      window.addEventListener('pointermove', this._onPointerMoveBound, { passive: false });
-      window.addEventListener('pointerup', this._onPointerUpBound, { passive: false });
-      window.addEventListener('pointercancel', this._onPointerCancelBound);
-    } else {
-      this.canvas.addEventListener('mousedown', this._onMouseDownBound);
-      this.canvas.addEventListener('mousemove', this._onMouseMoveBound);
-      this.canvas.addEventListener('mouseup', this._onMouseUpBound);
-      window.addEventListener('mousemove', this._onMouseMoveBound);
-      window.addEventListener('mouseup', this._onMouseUpBound);
-    }
-    this.canvas.addEventListener('wheel', this._onWheelBound, { passive: false });
-    this.canvas.addEventListener('contextmenu', this._onContextMenuBound);
-
-    this.hostElement.addEventListener('keydown', this._onKeyDownBound);
-    this.hostElement.addEventListener('keyup', this._onKeyUpBound);
-
-    this.canvas.addEventListener('pointerdown', this._onCanvasFocusBound, true);
-    this.canvas.addEventListener('mousedown', this._onCanvasFocusBound, true);
-  }
-
-  _getCanvasCoords(e) {
-    const rect = this.canvas.getBoundingClientRect();
-    return {
-      sx: e.clientX - rect.left,
-      sy: e.clientY - rect.top,
-      x: e.clientX,
-      y: e.clientY,
-    };
-  }
-
-  _setZoomAround(sx, sy, nextZoom) {
-    const clamped = Math.max(CONFIG.MIN_ZOOM, Math.min(CONFIG.MAX_ZOOM, nextZoom));
-    const world = this.screenToWorld(sx, sy);
-    this.zoom = clamped;
-    this.panX = sx - world.x * clamped;
-    this.panY = sy - world.y * clamped;
-    this.$('zoom-display').textContent = Math.round(this.zoom * 100) + '%';
-  }
-
+  // ── Tool Actions ────────────────────────────
   _startToolAction(e) {
     if (this.is3DMode) return;
 
-    const { sx, sy } = this._getCanvasCoords(e);
-    const world = this.screenToWorld(sx, sy);
-    const snapped = this._snap(world.x, world.y);
+    const { sx, sy } = this.input._getCanvasCoords(e);
+    const world = this.input.screenToWorld(sx, sy);
+    const snapped = this.input._snap(world.x, world.y);
 
     switch (this.activeTool) {
       case 'wall':
@@ -609,149 +585,8 @@ export class App {
     this._render();
   }
 
-  _startPanning(e) {
-    const { x, y } = { x: e.clientX, y: e.clientY };
-    this.isPanning = true;
-    this.panStart = { x, y, panX: this.panX, panY: this.panY };
-    this.canvas.style.cursor = 'grabbing';
-  }
 
-  _onMouseDown(e) {
-    if (this.is3DMode) return;
-    if (e.button === 1 || e.button === 2) {
-      this._startPanning(e);
-      return;
-    }
-    this._startToolAction(e);
-  }
-
-  _onPointerDown(e) {
-    if (this.is3DMode) return;
-    if (e.button === 2) return;
-    e.preventDefault();
-
-    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (!this._primaryPointerId) this._primaryPointerId = e.pointerId;
-
-    if (this._pointers.size >= 2) {
-      const ids = [...this._pointers.keys()];
-      const p1 = this._pointers.get(ids[0]);
-      const p2 = this._pointers.get(ids[1]);
-      const dx = p1.x - p2.x;
-      const dy = p1.y - p2.y;
-      this._pinchState = {
-        ids: [ids[0], ids[1]],
-        startDist: Math.max(1, Math.hypot(dx, dy)),
-        startZoom: this.zoom,
-      };
-      this.isPanning = false;
-      this.isDragging = false;
-      this._dragFurniture = null;
-      this.dragWall = null;
-      this._dragFurnitureOffset = null;
-      this._dragOffset = null;
-      return;
-    }
-
-    if (e.pointerType === 'mouse' && !e.isPrimary) return;
-    if (e.button === 1 || e.button === 2 || e.button === 5) {
-      this._startPanning(e);
-      return;
-    }
-    this._startToolAction(e);
-  }
-
-  _onMouseMove(e) {
-    if (this.is3DMode) return;
-    const { sx, sy } = this._getCanvasCoords(e);
-    if (this.isPanning) {
-      this.panX = this.panStart.panX + (e.clientX - this.panStart.x);
-      this.panY = this.panStart.panY + (e.clientY - this.panStart.y);
-      this._render();
-      return;
-    }
-
-    const world = this.screenToWorld(sx, sy);
-    const snapped = this._snap(world.x, world.y);
-    this.mouseWorld = snapped;
-
-    this.$('status-coords').textContent = `X: ${Math.round(snapped.x)} cm  Y: ${Math.round(snapped.y)} cm`;
-
-    if (this.isDragging && this.dragWall) {
-      this._doDrag(snapped.x, snapped.y);
-      this._render();
-      return;
-    }
-
-    if (this.isDragging && this._dragFurniture) {
-      this._dragFurniture.x = snapped.x - this._dragFurnitureOffset.dx;
-      this._dragFurniture.y = snapped.y - this._dragFurnitureOffset.dy;
-      this._syncSelection();
-      this._render();
-      return;
-    }
-
-    if (this.activeTool === 'select' || this.activeTool === 'eraser' || this.activeTool === 'door' || this.activeTool === 'window') {
-      this.hoveredWall = null;
-      for (const wall of this.walls) {
-        if (wall.hitTest(world.x, world.y)) { this.hoveredWall = wall; break; }
-      }
-      if (this.activeTool === 'select' && this.selectedWall) {
-        const threshold = CONFIG.SNAP_RADIUS / this.zoom;
-        const w = this.selectedWall;
-        if (Geom.dist(world.x, world.y, w.x1, w.y1) < threshold ||
-            Geom.dist(world.x, world.y, w.x2, w.y2) < threshold) {
-          this.canvas.style.cursor = 'move';
-        } else if (this.hoveredWall === w) {
-          this.canvas.style.cursor = 'grab';
-        } else {
-          this.canvas.style.cursor = this.hoveredWall ? 'pointer' : 'default';
-        }
-      } else {
-        this.canvas.style.cursor = this.hoveredWall ? 'pointer' : (this.activeTool === 'select' ? 'default' : 'crosshair');
-      }
-    }
-
-    this._render();
-  }
-
-  _onPointerMove(e) {
-    if (this.is3DMode) return;
-    e.preventDefault();
-    if (!this._pointers.has(e.pointerId)) return;
-
-    const rect = this.canvas.getBoundingClientRect();
-    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-    if (this._pinchState && this._pinchState.ids.includes(e.pointerId)) {
-      const [id1, id2] = this._pinchState.ids;
-      const p1 = this._pointers.get(id1);
-      const p2 = this._pointers.get(id2);
-      if (!p1 || !p2) return;
-
-      const cx = (p1.x + p2.x) / 2 - rect.left;
-      const cy = (p1.y + p2.y) / 2 - rect.top;
-      const dx = p1.x - p2.x;
-      const dy = p1.y - p2.y;
-      const dist = Math.max(1, Math.hypot(dx, dy));
-      const nextZoom = this._pinchState.startZoom * (dist / this._pinchState.startDist);
-      this._setZoomAround(cx, cy, nextZoom);
-      this._render();
-      return;
-    }
-
-    if (!this._pointers.has(e.pointerId)) return;
-    if (!this._primaryPointerId || e.pointerId !== this._primaryPointerId) return;
-
-    const { sx, sy } = { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
-    const world = this.screenToWorld(sx, sy);
-    const snapped = this._snap(world.x, world.y);
-    if (this.isPanning) {
-      this.panX = this.panStart.panX + (e.clientX - this.panStart.x);
-      this.panY = this.panStart.panY + (e.clientY - this.panStart.y);
-      this._render();
-      return;
-    }
+  _handleCanvasMove(world, snapped) {
     this.mouseWorld = snapped;
     this.$('status-coords').textContent = `X: ${Math.round(snapped.x)} cm  Y: ${Math.round(snapped.y)} cm`;
 
@@ -793,129 +628,8 @@ export class App {
     this._render();
   }
 
-  _onMouseUp() {
-    if (this.is3DMode) return;
-    if (this.isPanning) {
-      this.isPanning = false;
-      this.canvas.style.cursor = 'crosshair';
-    }
-    if (this.isDragging) this._finishDrag();
-  }
-
-  _onPointerUp(e) {
-    if (this.is3DMode) return;
-    e.preventDefault();
-    this._pointers.delete(e.pointerId);
-    if (this._pinchState && this._pinchState.ids.includes(e.pointerId)) {
-      this._pinchState = null;
-    }
-
-    if (this._primaryPointerId === e.pointerId) {
-      const remaining = [...this._pointers.keys()];
-      this._primaryPointerId = remaining[0] || null;
-    }
-
-    if (this._pointers.size === 0) {
-      if (this.isPanning) {
-        this.isPanning = false;
-        this.canvas.style.cursor = 'crosshair';
-      }
-      if (this.isDragging) this._finishDrag();
-    }
-  }
-
-  _onPointerCancel(e) {
-    this._onPointerUp(e);
-  }
-
-  _onWheel(e) {
-    if (this.is3DMode) return;
-    e.preventDefault();
-    const { sx, sy } = this._getCanvasCoords(e);
-    const delta = e.deltaY > 0 ? -CONFIG.ZOOM_STEP : CONFIG.ZOOM_STEP;
-    const nextZoom = this.zoom + delta * this.zoom;
-    this._setZoomAround(sx, sy, nextZoom);
-    this._render();
-  }
-
-  _onKeyDown(e) {
-    const active = this.root.activeElement;
-    const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
-
-    // Undo/redo — works in any tab
-    if (e.ctrlKey && !e.shiftKey && e.key === 'z') { e.preventDefault(); this._undo(); return; }
-    if (e.ctrlKey && e.shiftKey && e.key === 'Z') { e.preventDefault(); this._redo(); return; }
-
-    // 3D toggle — works always
-    if (e.key === '0' && !e.ctrlKey && !e.altKey && !e.metaKey && !isInput) {
-      if (this.activeTab === 'creative') this._toggle3D();
-      return;
-    }
-
-    // Skip 2D shortcuts when in 3D mode
-    if (this.is3DMode) return;
-
-    if (e.code === 'Space' && !e.repeat) this.canvas.style.cursor = 'grab';
-
-    if (e.key === 'Escape') {
-      if (this.polylinePoints.length > 0) {
-        this._finishPolyline();
-      } else if (this.isDrawing) {
-        this.isDrawing = false;
-        this.drawStart = null;
-        this._status('Cancelled');
-      }
-      this._clearSelection();
-      this._syncSelection();
-      this._render();
-    }
-
-    if (e.key === 'Delete' || e.key === 'Backspace') this._deleteSelected();
-
-    if (!e.ctrlKey && !e.altKey && !e.metaKey && !isInput) {
-      // Layer switching with number keys
-      if (e.key === '1') this._switchLayer('structure');
-      if (e.key === '2') this._switchLayer('furniture');
-      if (e.key === '3') this._switchLayer('electrical');
-      if (e.key === '4') this._switchLayer('plumbing');
-
-      // Costs tab
-      if (e.key === 'b') this._switchTab('costs');
-
-      // Layer-specific tool shortcuts
-      if (this.activeLayer === 'structure') {
-        if (e.key === 'w') this._setTool('wall');
-        if (e.key === 'v') this._setTool('select');
-        if (e.key === 'f') this._setTool('floor');
-        if (e.key === 'e') this._setTool('eraser');
-        if (e.key === 'd') this._setTool('door');
-        if (e.key === 'n') this._setTool('window');
-        if (e.key === 's') this._setTool('stair');
-        if (e.key === 'l') this._setTool('label');
-      } else if (this.activeLayer === 'electrical') {
-        if (e.key === 'q') this._setTool('panel');
-        if (e.key === 'w') this._setTool('wire');
-        if (e.key === 's') this._setTool('electrical_symbol');
-        if (e.key === 'v') this._setTool('select');
-        if (e.key === 'e') this._setTool('eraser');
-      } else if (this.activeLayer === 'plumbing') {
-        if (e.key === 'p') this._setTool('pipe');
-        if (e.key === 's') this._setTool('plumbing_symbol');
-        if (e.key === 'v') this._setTool('select');
-        if (e.key === 'e') this._setTool('eraser');
-      } else if (this.activeLayer === 'furniture') {
-        if (e.key === 'f') this._setTool('furniture_item');
-        if (e.key === 'v') this._setTool('select');
-        if (e.key === 'e') this._setTool('eraser');
-      }
-
-      if (e.key === 'PageUp') { e.preventDefault(); this._switchStory(this.activeStoryIndex + 1); }
-      if (e.key === 'PageDown') { e.preventDefault(); this._switchStory(this.activeStoryIndex - 1); }
-    }
-  }
-
-  _onKeyUp(e) {
-    if (e.code === 'Space') this.canvas.style.cursor = 'crosshair';
+  _getToolShortcuts() {
+    return TOOL_SHORTCUTS_BY_LAYER[this.activeLayer];
   }
 
   // ── Wall Operations ─────────────────────────
@@ -2379,25 +2093,14 @@ export class App {
     }
 
     // Show/hide property panels
-    const panels = ['wall-props', 'floor-props', 'door-props', 'window-props', 'stair-props', 'label-props', 'panel-props',
-      'wire-props', 'electrical-symbol-props', 'pipe-props', 'plumbing-symbol-props', 'furniture-props',
-      'selection-props', 'sel-door-props', 'sel-window-props', 'sel-stair-props', 'sel-label-props', 'sel-panel-props',
-      'sel-wire-props', 'sel-elec-symbol-props', 'sel-pipe-props', 'sel-plumb-symbol-props', 'sel-furniture-props'];
-    for (const id of panels) {
+    for (const id of ALL_TOOL_PROP_PANEL_IDS) {
       const el = this.$(id);
       if (el) el.style.display = 'none';
     }
 
-    const showMap = {
-      wall: 'wall-props', floor: 'floor-props', door: 'door-props', window: 'window-props',
-      stair: 'stair-props', label: 'label-props',
-      panel: 'panel-props',
-      wire: 'wire-props', electrical_symbol: 'electrical-symbol-props',
-      pipe: 'pipe-props', plumbing_symbol: 'plumbing-symbol-props',
-      furniture_item: 'furniture-props',
-    };
-    if (showMap[tool]) {
-      const el = this.$(showMap[tool]);
+    const panelId = getToolPanelId(tool);
+    if (panelId) {
+      const el = this.$(panelId);
       if (el) el.style.display = '';
     }
 
@@ -2425,11 +2128,7 @@ export class App {
   }
 
   _syncSelection() {
-    const panels = ['wall-props', 'floor-props', 'door-props', 'window-props', 'stair-props', 'label-props', 'panel-props',
-      'wire-props', 'electrical-symbol-props', 'pipe-props', 'plumbing-symbol-props', 'furniture-props',
-      'selection-props', 'sel-door-props', 'sel-window-props', 'sel-stair-props', 'sel-label-props', 'sel-panel-props',
-      'sel-wire-props', 'sel-elec-symbol-props', 'sel-pipe-props', 'sel-plumb-symbol-props', 'sel-furniture-props'];
-    for (const id of panels) {
+    for (const id of ALL_TOOL_PROP_PANEL_IDS) {
       const el = this.$(id);
       if (el) el.style.display = 'none';
     }
@@ -2576,16 +2275,9 @@ export class App {
       }
     } else {
       // Show default tool panel
-      const showMap = {
-        wall: 'wall-props', floor: 'floor-props', door: 'door-props', window: 'window-props',
-        stair: 'stair-props', label: 'label-props',
-        panel: 'panel-props',
-        wire: 'wire-props', electrical_symbol: 'electrical-symbol-props',
-        pipe: 'pipe-props', plumbing_symbol: 'plumbing-symbol-props',
-        furniture_item: 'furniture-props',
-      };
-      if (showMap[this.activeTool]) {
-        const el = this.$(showMap[this.activeTool]);
+      const panelId = getToolPanelId(this.activeTool);
+      if (panelId) {
+        const el = this.$(panelId);
         if (el) el.style.display = '';
       }
     }
@@ -2793,29 +2485,10 @@ export class App {
 
   // ── Cleanup ─────────────────────────────────
   destroy() {
-    if (this._supportsPointerEvents) {
-      this.canvas.removeEventListener('pointerdown', this._onPointerDownBound);
-      this.canvas.removeEventListener('pointermove', this._onPointerMoveBound);
-      this.canvas.removeEventListener('pointerup', this._onPointerUpBound);
-      this.canvas.removeEventListener('pointercancel', this._onPointerCancelBound);
-      this.canvas.removeEventListener('pointerleave', this._onPointerCancelBound);
-      this.canvas.removeEventListener('pointerout', this._onPointerCancelBound);
-      window.removeEventListener('pointermove', this._onPointerMoveBound);
-      window.removeEventListener('pointerup', this._onPointerUpBound);
-      window.removeEventListener('pointercancel', this._onPointerCancelBound);
-    } else {
-      this.canvas.removeEventListener('mousedown', this._onMouseDownBound);
-      this.canvas.removeEventListener('mousemove', this._onMouseMoveBound);
-      this.canvas.removeEventListener('mouseup', this._onMouseUpBound);
-      window.removeEventListener('mousemove', this._onMouseMoveBound);
-      window.removeEventListener('mouseup', this._onMouseUpBound);
+    if (this.input) {
+      this.input.destroy();
+      this.input = null;
     }
-    this.canvas.removeEventListener('wheel', this._onWheelBound, { passive: false });
-    this.canvas.removeEventListener('contextmenu', this._onContextMenuBound);
-    this.canvas.removeEventListener('pointerdown', this._onCanvasFocusBound, true);
-    this.canvas.removeEventListener('mousedown', this._onCanvasFocusBound, true);
-    this.hostElement.removeEventListener('keydown', this._onKeyDownBound);
-    this.hostElement.removeEventListener('keyup', this._onKeyUpBound);
 
     for (const { el, type, handler } of this._mobileNavBoundHandlers) {
       el.removeEventListener(type, handler);

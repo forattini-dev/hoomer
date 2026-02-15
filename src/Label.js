@@ -1,4 +1,4 @@
-let nextId = 1;
+import { nextId } from './IdGenerator.js';
 
 export class Label {
   constructor(x, y, text = 'Room', fontSize = 16) {
@@ -6,7 +6,7 @@ export class Label {
     this.y = y;
     this.text = text;
     this.fontSize = fontSize;
-    this.id = nextId++;
+    this.id = nextId();
   }
 
   hitTest(px, py) {
@@ -22,10 +22,13 @@ export class Label {
     return {
       x: this.x, y: this.y,
       text: this.text, fontSize: this.fontSize,
+      id: this.id,
     };
   }
 
   static fromData(d) {
-    return new Label(d.x, d.y, d.text, d.fontSize);
+    const label = new Label(d.x, d.y, d.text, d.fontSize);
+    if (d.id) label.id = d.id;
+    return label;
   }
 }

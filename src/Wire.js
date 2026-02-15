@@ -1,41 +1,22 @@
-import { Geom } from './geometry.js';
+import { Polyline } from './Polyline.js';
 
-let nextId = 1;
-
-export class Wire {
+export class Wire extends Polyline {
   constructor(points = [], gauge = 2.5) {
-    this.points = points;
+    super(points);
     this.gauge = gauge;
-    this.id = nextId++;
-  }
-
-  get totalLength() {
-    let len = 0;
-    for (let i = 1; i < this.points.length; i++) {
-      len += Geom.dist(this.points[i - 1].x, this.points[i - 1].y, this.points[i].x, this.points[i].y);
-    }
-    return len;
-  }
-
-  hitTest(px, py) {
-    const threshold = 6;
-    for (let i = 1; i < this.points.length; i++) {
-      const d = Geom.pointToSegmentDist(px, py,
-        this.points[i - 1].x, this.points[i - 1].y,
-        this.points[i].x, this.points[i].y);
-      if (d <= threshold) return true;
-    }
-    return false;
   }
 
   serialize() {
     return {
       points: this.points.map(p => ({ x: p.x, y: p.y })),
       gauge: this.gauge,
+      id: this.id,
     };
   }
 
   static fromData(d) {
-    return new Wire(d.points, d.gauge);
+    const wire = new Wire(d.points, d.gauge);
+    if (d.id) wire.id = d.id;
+    return wire;
   }
 }

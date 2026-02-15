@@ -1,4 +1,4 @@
-let nextId = 1;
+import { nextPrefixedId } from './IdGenerator.js';
 
 export class ElectricalPanel {
   constructor(x, y, name = 'QD-1', voltage = 220, phases = 1, mainBreakerA = 63, busCapacityA = 100) {
@@ -9,7 +9,7 @@ export class ElectricalPanel {
     this.phases = phases;
     this.mainBreakerA = mainBreakerA;
     this.busCapacityA = busCapacityA;
-    this.id = `panel_${nextId++}`;
+    this.id = nextPrefixedId('panel');
   }
 
   hitTest(px, py) {

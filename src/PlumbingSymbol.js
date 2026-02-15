@@ -1,4 +1,4 @@
-let nextId = 1;
+import { nextId } from './IdGenerator.js';
 
 export class PlumbingSymbol {
   constructor(x, y, symbolType = 'valve', rotation = 0) {
@@ -6,7 +6,7 @@ export class PlumbingSymbol {
     this.y = y;
     this.symbolType = symbolType;
     this.rotation = rotation;
-    this.id = nextId++;
+    this.id = nextId();
   }
 
   hitTest(px, py) {
@@ -21,10 +21,13 @@ export class PlumbingSymbol {
       x: this.x, y: this.y,
       symbolType: this.symbolType,
       rotation: this.rotation,
+      id: this.id,
     };
   }
 
   static fromData(d) {
-    return new PlumbingSymbol(d.x, d.y, d.symbolType, d.rotation);
+    const symbol = new PlumbingSymbol(d.x, d.y, d.symbolType, d.rotation);
+    if (d.id) symbol.id = d.id;
+    return symbol;
   }
 }

@@ -2,6 +2,8 @@ import { CONFIG } from './config.js';
 import { Geom } from './geometry.js';
 import { Materials } from './materials.js';
 import { drawFurnitureShape } from './FurnitureShapes.js';
+import { drawElecSymbolShape } from './ElectricalShapes.js';
+import { drawPlumbSymbolShape } from './PlumbingShapes.js';
 
 const { SELECTION, TEXT } = CONFIG.COLORS;
 
@@ -928,7 +930,7 @@ export class Renderer {
     const r = 10 / zoom;
     const color = isSelected ? SELECTION : CONFIG.WIRE_COLORS;
 
-    this._drawElecSymbolShape(ctx, sym.symbolType, r, color, zoom);
+    drawElecSymbolShape(ctx, sym.symbolType, r, color, zoom);
 
     ctx.restore();
 
@@ -948,155 +950,6 @@ export class Renderer {
     this._drawElectricalCircuitLabel(ctx, sym, state, zoom, isSelected);
   }
 
-  _drawElecSymbolShape(ctx, type, r, color, zoom) {
-    const lw = 1.5 / zoom;
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = lw;
-
-    switch (type) {
-      case 'outlet_low': {
-        // Circle + horizontal line (tomada baixa)
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(-r * 1.4, 0);
-        ctx.lineTo(r * 1.4, 0);
-        ctx.stroke();
-        break;
-      }
-      case 'outlet_med': {
-        // Circle + cross (tomada média)
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.stroke();
-        const cr = r * 0.6;
-        ctx.beginPath();
-        ctx.moveTo(-cr, -cr); ctx.lineTo(cr, cr);
-        ctx.moveTo(cr, -cr); ctx.lineTo(-cr, cr);
-        ctx.stroke();
-        break;
-      }
-      case 'outlet_high': {
-        // Circle + triangle (tomada alta)
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.stroke();
-        const tr = r * 0.6;
-        ctx.beginPath();
-        ctx.moveTo(0, -tr);
-        ctx.lineTo(-tr, tr * 0.7);
-        ctx.lineTo(tr, tr * 0.7);
-        ctx.closePath();
-        ctx.stroke();
-        break;
-      }
-      case 'switch_single': {
-        // Circle + diagonal line
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(r * 1.3, -r * 1.0);
-        ctx.stroke();
-        // Small dash at end
-        ctx.beginPath();
-        ctx.moveTo(r * 1.0, -r * 1.2);
-        ctx.lineTo(r * 1.6, -r * 0.8);
-        ctx.stroke();
-        break;
-      }
-      case 'switch_double': {
-        // Circle + two diagonal lines
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(r * 1.3, -r * 1.0);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(r * 1.0, -r * 1.2);
-        ctx.lineTo(r * 1.6, -r * 0.8);
-        ctx.stroke();
-        // Second dash
-        ctx.beginPath();
-        ctx.moveTo(r * 0.8, -r * 1.4);
-        ctx.lineTo(r * 1.4, -r * 1.0);
-        ctx.stroke();
-        break;
-      }
-      case 'switch_parallel': {
-        // Circle + diagonal + "P"
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(r * 1.3, -r * 1.0);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(r * 1.0, -r * 1.2);
-        ctx.lineTo(r * 1.6, -r * 0.8);
-        ctx.stroke();
-        // "P" label
-        const fs = r * 0.8;
-        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('P', r * 1.7, -r * 0.3);
-        break;
-      }
-      case 'light_ceiling': {
-        // Circle with rays (sun symbol)
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2);
-        ctx.stroke();
-        const rays = 8;
-        const innerR = r * 0.55;
-        const outerR = r * 1.1;
-        for (let i = 0; i < rays; i++) {
-          const a = (i / rays) * Math.PI * 2;
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(a) * innerR, Math.sin(a) * innerR);
-          ctx.lineTo(Math.cos(a) * outerR, Math.sin(a) * outerR);
-          ctx.stroke();
-        }
-        break;
-      }
-      case 'light_wall': {
-        // Semicircle with rays
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.7, -Math.PI / 2, Math.PI / 2);
-        ctx.closePath();
-        ctx.stroke();
-        const wallRays = 5;
-        for (let i = 0; i < wallRays; i++) {
-          const a = -Math.PI / 2 + (i / (wallRays - 1)) * Math.PI;
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(a) * r * 0.7, Math.sin(a) * r * 0.7);
-          ctx.lineTo(Math.cos(a) * r * 1.2, Math.sin(a) * r * 1.2);
-          ctx.stroke();
-        }
-        break;
-      }
-      case 'distribution_panel': {
-        // Rectangle with "QD"
-        const bw = r * 1.8;
-        const bh = r * 1.4;
-        ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
-        const fs = r * 0.8;
-        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('QD', 0, 0);
-        break;
-      }
-    }
-  }
-
   _drawElectricalCircuitLabel(ctx, sym, state, zoom, isSelected) {
     const circuits = state.currentStory?.layers?.electrical?.circuits || [];
     const circuit = circuits.find(c => c.id === sym.circuitId);
@@ -1113,7 +966,7 @@ export class Renderer {
     ctx.save();
     ctx.translate(sym.x, sym.y);
     ctx.rotate(sym.rotation * Math.PI / 180);
-    this._drawElecSymbolShape(ctx, sym.symbolType, 10, CONFIG.WIRE_COLORS, 1);
+    drawElecSymbolShape(ctx, sym.symbolType, 10, CONFIG.WIRE_COLORS, 1);
     ctx.restore();
     this._drawTextWithBg(ctx, `${sym.amperageA || 0}A`, sym.x + 12, sym.y + 10, {
       fontSize: 10, align: 'left', baseline: 'top', textColor: CONFIG.COLORS.WIRE_LABEL,
@@ -1281,7 +1134,7 @@ export class Renderer {
     const r = 10 / zoom;
     const color = isSelected ? SELECTION : CONFIG.LAYER_COLORS.plumbing;
 
-    this._drawPlumbSymbolShape(ctx, sym.symbolType, r, color, zoom);
+    drawPlumbSymbolShape(ctx, sym.symbolType, r, color, zoom);
 
     ctx.restore();
 
@@ -1299,110 +1152,11 @@ export class Renderer {
     }
   }
 
-  _drawPlumbSymbolShape(ctx, type, r, color, zoom) {
-    const lw = 1.5 / zoom;
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = lw;
-
-    switch (type) {
-      case 'valve': {
-        // Bowtie shape
-        ctx.beginPath();
-        ctx.moveTo(-r, -r * 0.7);
-        ctx.lineTo(0, 0);
-        ctx.lineTo(-r, r * 0.7);
-        ctx.closePath();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(r, -r * 0.7);
-        ctx.lineTo(0, 0);
-        ctx.lineTo(r, r * 0.7);
-        ctx.closePath();
-        ctx.stroke();
-        break;
-      }
-      case 'drain': {
-        // Circle + arrow pointing down
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2);
-        ctx.stroke();
-        // Arrow down
-        ctx.beginPath();
-        ctx.moveTo(0, r * 0.6);
-        ctx.lineTo(0, r * 1.4);
-        ctx.stroke();
-        // Arrowhead
-        ctx.beginPath();
-        ctx.moveTo(0, r * 1.4);
-        ctx.lineTo(-r * 0.3, r * 1.0);
-        ctx.lineTo(r * 0.3, r * 1.0);
-        ctx.closePath();
-        ctx.fill();
-        break;
-      }
-      case 'water_tank': {
-        // Rectangle with "CX"
-        const bw = r * 1.8;
-        const bh = r * 1.4;
-        ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
-        const fs = r * 0.7;
-        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('CX', 0, 0);
-        break;
-      }
-      case 'water_pump': {
-        // Circle with "M"
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.stroke();
-        const fs = r * 0.9;
-        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('M', 0, 0);
-        break;
-      }
-      case 'pool': {
-        // Rectangle with waves
-        const bw = r * 2;
-        const bh = r * 1.2;
-        ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
-        // Wave lines
-        ctx.beginPath();
-        const waveY = -bh * 0.1;
-        const step = bw / 8;
-        ctx.moveTo(-bw / 2 + step, waveY);
-        for (let i = 1; i < 8; i++) {
-          const x = -bw / 2 + step * (i + 1);
-          const y = waveY + (i % 2 === 0 ? -r * 0.2 : r * 0.2);
-          ctx.quadraticCurveTo(-bw / 2 + step * i + step / 2, i % 2 === 0 ? waveY + r * 0.2 : waveY - r * 0.2, x, waveY);
-        }
-        ctx.stroke();
-        break;
-      }
-      case 'motor': {
-        // Circle with "MO"
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.stroke();
-        const fs = r * 0.7;
-        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('MO', 0, 0);
-        break;
-      }
-    }
-  }
-
   drawPlumbingSymbolExport(ctx, sym) {
     ctx.save();
     ctx.translate(sym.x, sym.y);
     ctx.rotate(sym.rotation * Math.PI / 180);
-    this._drawPlumbSymbolShape(ctx, sym.symbolType, 10, CONFIG.LAYER_COLORS.plumbing, 1);
+    drawPlumbSymbolShape(ctx, sym.symbolType, 10, CONFIG.LAYER_COLORS.plumbing, 1);
     ctx.restore();
   }
 

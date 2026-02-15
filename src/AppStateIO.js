@@ -12,6 +12,7 @@ import { ElectricalSymbol } from './ElectricalSymbol.js';
 import { Pipe } from './Pipe.js';
 import { PlumbingSymbol } from './PlumbingSymbol.js';
 import { Furniture } from './Furniture.js';
+import { seedFromSerializedState } from './IdGenerator.js';
 
 export function storyName(index) {
   return index === 0 ? 'Ground Floor' : `Floor ${index}`;
@@ -118,6 +119,7 @@ function serializeStory(story) {
 export function deserializeState(rawState) {
   const safeState = rawState && typeof rawState === 'object' ? rawState : {};
   const stories = asArray(safeState.stories).map(deserializeStory).filter(Boolean);
+  seedFromSerializedState({ stories });
 
   const normalizedStories = stories.length ? stories : [createLayeredStory(storyName(0))];
   const requestedStoryIndex = asIntegerOrMinusOne(safeState.activeStoryIndex);
@@ -230,4 +232,3 @@ function deserializeFurnitureLayer(layer) {
     items: parseOrEmptyLayerItems(layer, 'items', (item) => Furniture.fromData(item)),
   };
 }
-

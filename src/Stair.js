@@ -1,4 +1,4 @@
-let nextId = 1;
+import { nextId } from './IdGenerator.js';
 
 export class Stair {
   constructor(x, y, width = 100, length = 280, rotation = 0) {
@@ -8,7 +8,7 @@ export class Stair {
     this.length = length;
     this.rotation = rotation; // degrees: 0, 90, 180, 270
     this.stepDepth = 28;
-    this.id = nextId++;
+    this.id = nextId();
   }
 
   get stepCount() {
@@ -47,10 +47,13 @@ export class Stair {
       x: this.x, y: this.y,
       width: this.width, length: this.length,
       rotation: this.rotation,
+      id: this.id,
     };
   }
 
   static fromData(d) {
-    return new Stair(d.x, d.y, d.width, d.length, d.rotation);
+    const stair = new Stair(d.x, d.y, d.width, d.length, d.rotation);
+    if (d.id) stair.id = d.id;
+    return stair;
   }
 }

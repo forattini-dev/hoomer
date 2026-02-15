@@ -1,6 +1,5 @@
 import { CONFIG } from './config.js';
-
-let nextId = 1;
+import { nextId } from './IdGenerator.js';
 
 export class Furniture {
   constructor(x, y, furnitureType = 'chair', rotation = 0) {
@@ -8,7 +7,7 @@ export class Furniture {
     this.y = y;
     this.furnitureType = furnitureType;
     this.rotation = rotation;
-    this.id = nextId++;
+    this.id = nextId();
   }
 
   hitTest(px, py) {
@@ -17,7 +16,7 @@ export class Furniture {
 
     const w = catalog.w;
     const d = catalog.d;
-    const margin = 5;
+    const margin = CONFIG.HIT_MARGIN;
 
     // Translate point to local coordinates
     const dx = px - this.x;
@@ -39,10 +38,13 @@ export class Furniture {
       y: this.y,
       furnitureType: this.furnitureType,
       rotation: this.rotation,
+      id: this.id,
     };
   }
 
   static fromData(d) {
-    return new Furniture(d.x, d.y, d.furnitureType, d.rotation);
+    const furniture = new Furniture(d.x, d.y, d.furnitureType, d.rotation);
+    if (d.id) furniture.id = d.id;
+    return furniture;
   }
 }

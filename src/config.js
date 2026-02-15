@@ -7,6 +7,8 @@ export const CONFIG = {
     WIRE_LABEL: '#c87a10',
     ELEC_LABEL: '#b27b12',
   },
+  HIT_MARGIN: 5,
+  HIT_MARGIN_LINE: 6,
   SCALE: 1,
   DEFAULT_GRID: 10,
   MAJOR_GRID_MULT: 5,
@@ -58,18 +60,6 @@ export const CONFIG = {
       shortLabel: 'Plumb',
       icon: '🚰',
     },
-  },
-  LAYER_LABELS: {
-    structure: 'Structure',
-    furniture: 'Furniture',
-    electrical: 'Electrical',
-    plumbing: 'Plumbing',
-  },
-  LAYER_SHORT_LABELS: {
-    structure: 'Struct',
-    furniture: 'Furniture',
-    electrical: 'Elec',
-    plumbing: 'Plumb',
   },
   LAYER_COLORS: {
     structure: '#7b96aa',

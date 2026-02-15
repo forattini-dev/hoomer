@@ -586,8 +586,8 @@ main {
 }
 
 #mobile-move-controls .walk-btn {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: rgba(22, 25, 32, 0.4);
@@ -1047,8 +1047,8 @@ main {
 @media (max-width: 1280px), (pointer: coarse), (hover: none) {
   :host {
     --panel-w: 100%;
-    --touch-target: 38px;
-    --toolbar-h: 42px;
+    --touch-target: 44px;
+    --toolbar-h: 48px;
     --statusbar-h: 26px;
   }
 
@@ -1102,10 +1102,10 @@ main {
 
   #story-layer-row #btn-add-story,
   #story-layer-row #btn-remove-story {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    min-height: 32px;
+    width: var(--touch-target);
+    height: var(--touch-target);
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
   }
 
   main {
@@ -1206,9 +1206,9 @@ main {
   }
 
   .layer-tab {
-    width: calc(var(--touch-target) - 8px);
-    min-width: calc(var(--touch-target) - 8px);
-    min-height: 36px;
+    width: var(--touch-target);
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
     padding: 0;
     border-radius: 10px;
     justify-content: center;
@@ -1253,7 +1253,7 @@ main {
   }
 
   .layer-tab {
-    min-height: 36px;
+    min-height: var(--touch-target);
   }
 
   .tool-btn,
@@ -1287,7 +1287,7 @@ main {
   #elec-circuit-select,
   #sel-elec-circuit-select,
   .cost-price-input {
-    min-height: 40px;
+    min-height: var(--touch-target);
   }
 
   #tab-bar-tabs,
@@ -1300,9 +1300,9 @@ main {
 
 @media (max-width: 900px) {
   :host {
-    --toolbar-h: 40px;
+    --toolbar-h: 44px;
     --statusbar-h: 26px;
-    --touch-target: 38px;
+    --touch-target: 44px;
   }
 
   #creative-toolbar,
@@ -1338,9 +1338,9 @@ main {
   }
 
   .layer-tab {
-    width: calc(var(--touch-target) - 8px);
-    min-width: calc(var(--touch-target) - 8px);
-    min-height: 34px;
+    width: var(--touch-target);
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
   }
 
   .layer-tab .layer-icon {
@@ -1351,8 +1351,8 @@ main {
 
 @media (max-width: 768px) and (orientation: portrait) {
   :host {
-    --toolbar-h: 42px;
-    --touch-target: 38px;
+    --toolbar-h: 44px;
+    --touch-target: 44px;
   }
 
   #tools-panel {
@@ -1387,9 +1387,9 @@ main {
   }
 
   .layer-tab {
-    width: calc(var(--touch-target) - 6px);
-    min-width: calc(var(--touch-target) - 6px);
-    min-height: 34px;
+    width: var(--touch-target);
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
     border-radius: 9px;
   }
 }
