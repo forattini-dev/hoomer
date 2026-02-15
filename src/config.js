@@ -1,3 +1,77 @@
+const TOOL_PANEL_MAP = Object.freeze({
+  wall: 'wall-props',
+  floor: 'floor-props',
+  door: 'door-props',
+  window: 'window-props',
+  stair: 'stair-props',
+  label: 'label-props',
+  panel: 'panel-props',
+  wire: 'wire-props',
+  electrical_symbol: 'electrical-symbol-props',
+  pipe: 'pipe-props',
+  plumbing_symbol: 'plumbing-symbol-props',
+  furniture_item: 'furniture-props',
+});
+
+const TOOL_SHORTCUTS_BY_LAYER = Object.freeze({
+  structure: {
+    w: 'wall',
+    v: 'select',
+    f: 'floor',
+    e: 'eraser',
+    d: 'door',
+    n: 'window',
+    s: 'stair',
+    l: 'label',
+  },
+  electrical: {
+    q: 'panel',
+    w: 'wire',
+    s: 'electrical_symbol',
+    v: 'select',
+    e: 'eraser',
+  },
+  plumbing: {
+    p: 'pipe',
+    s: 'plumbing_symbol',
+    v: 'select',
+    e: 'eraser',
+  },
+  furniture: {
+    f: 'furniture_item',
+    v: 'select',
+    e: 'eraser',
+  },
+});
+
+const ALL_TOOL_PROP_PANEL_IDS = Object.freeze([
+  'wall-props',
+  'floor-props',
+  'door-props',
+  'window-props',
+  'stair-props',
+  'label-props',
+  'panel-props',
+  'wire-props',
+  'electrical-symbol-props',
+  'pipe-props',
+  'plumbing-symbol-props',
+  'furniture-props',
+  'selection-props',
+  'sel-door-props',
+  'sel-window-props',
+  'sel-stair-props',
+  'sel-label-props',
+  'sel-panel-props',
+  'sel-wire-props',
+  'sel-elec-symbol-props',
+  'sel-pipe-props',
+  'sel-plumb-symbol-props',
+  'sel-furniture-props',
+]);
+
+export { TOOL_PANEL_MAP, TOOL_SHORTCUTS_BY_LAYER, ALL_TOOL_PROP_PANEL_IDS };
+
 export const CONFIG = {
   FONT_FAMILY: '"Segoe UI", system-ui, sans-serif',
   COLORS: {
@@ -75,6 +149,12 @@ export const CONFIG = {
     electrical: ['panel', 'wire', 'electrical_symbol', 'select', 'eraser'],
     plumbing: ['pipe', 'plumbing_symbol', 'select', 'eraser'],
   },
+
+  TOOL_PANEL_MAP,
+
+  TOOL_SHORTCUTS_BY_LAYER,
+
+  ALL_TOOL_PROP_PANEL_IDS,
 
   // ── Electrical ──────────────────────────────
   WIRE_GAUGES: [1.5, 2.5, 4, 6, 10],
