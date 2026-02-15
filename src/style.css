@@ -274,6 +274,16 @@ select {
   flex-shrink: 0;
 }
 
+.layer-tab .layer-icon {
+  width: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.95;
+}
+
 .layer-tab .layer-vis {
   width: 14px;
   height: 14px;
@@ -287,6 +297,10 @@ select {
 }
 .layer-tab .layer-vis:hover { opacity: 1; background: rgba(0,0,0,0.1); }
 .layer-tab .layer-vis.hidden { opacity: 0.3; }
+
+.layer-label-short {
+  display: none;
+}
 
 /* ── Main Layout ────────────────────────────── */
 main {
@@ -1027,6 +1041,61 @@ main {
   #story-bar,
   #layer-bar {
     gap: 6px;
+  }
+
+  #layer-bar {
+    padding-right: 8px;
+    overflow-x: auto;
+  }
+
+  #layer-tabs {
+    width: max-content;
+    gap: 6px;
+    min-height: var(--touch-target);
+    overflow-x: auto;
+    padding-bottom: 2px;
+    flex-wrap: nowrap;
+  }
+
+  .layer-tab {
+    min-width: 84px;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 10px;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .layer-tab .layer-icon {
+    font-size: 14px;
+    width: 14px;
+  }
+
+  .layer-tab .layer-label-long {
+    display: none;
+  }
+
+  .layer-label-short {
+    display: inline;
+    font-size: 11px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    max-width: 58px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .layer-tab .layer-vis {
+    width: 24px;
+    height: 24px;
+    font-size: 13px;
+    border-radius: 4px;
+  }
+
+  .layer-tab .layer-dot {
+    width: 9px;
+    height: 9px;
   }
 
   .top-tab,

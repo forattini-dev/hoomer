@@ -29,11 +29,39 @@ export const CONFIG = {
 
   // ── Layers ──────────────────────────────────
   LAYERS: ['structure', 'furniture', 'electrical', 'plumbing'],
+  LAYER_META: {
+    structure: {
+      label: 'Structure',
+      shortLabel: 'Struct',
+      icon: '▦',
+    },
+    furniture: {
+      label: 'Furniture',
+      shortLabel: 'Furniture',
+      icon: '🪑',
+    },
+    electrical: {
+      label: 'Electrical',
+      shortLabel: 'Elec',
+      icon: '⚡',
+    },
+    plumbing: {
+      label: 'Plumbing',
+      shortLabel: 'Plumb',
+      icon: '🚰',
+    },
+  },
   LAYER_LABELS: {
     structure: 'Structure',
     furniture: 'Furniture',
     electrical: 'Electrical',
     plumbing: 'Plumbing',
+  },
+  LAYER_SHORT_LABELS: {
+    structure: 'Struct',
+    furniture: 'Furniture',
+    electrical: 'Elec',
+    plumbing: 'Plumb',
   },
   LAYER_COLORS: {
     structure: '#7b96aa',

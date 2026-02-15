@@ -470,6 +470,18 @@ export class App {
     const layer = this.currentStory.layers[layerName];
     if (layer) {
       layer.visible = !layer.visible;
+      const anyVisible = CONFIG.LAYERS.some(ln => this.currentStory.layers[ln]?.visible);
+      if (!anyVisible) {
+        layer.visible = true;
+        this._status('Keep at least one layer visible');
+      } else {
+        if (!layer.visible && this.activeLayer === layerName) {
+          const fallback = CONFIG.LAYERS.find((ln) => ln !== layerName && this.currentStory.layers[ln]?.visible);
+          if (fallback) {
+            this._switchLayer(fallback);
+          }
+        }
+      }
       this._syncLayerTabs();
       this._render();
     }
@@ -482,7 +494,10 @@ export class App {
     for (let i = 0; i < CONFIG.LAYERS.length; i++) {
       const layerName = CONFIG.LAYERS[i];
       const color = CONFIG.LAYER_COLORS[layerName];
-      const label = CONFIG.LAYER_LABELS[layerName];
+      const meta = CONFIG.LAYER_META && CONFIG.LAYER_META[layerName] ? CONFIG.LAYER_META[layerName] : {};
+      const label = meta.label || CONFIG.LAYER_LABELS[layerName];
+      const shortLabel = meta.shortLabel || (CONFIG.LAYER_SHORT_LABELS && CONFIG.LAYER_SHORT_LABELS[layerName]) || label.slice(0, 1).toUpperCase();
+      const icon = meta.icon || '';
       const isActive = this.activeLayer === layerName;
       const isVisible = this.currentStory.layers[layerName].visible;
       const keyNum = i + 1;
@@ -490,10 +505,16 @@ export class App {
       const tab = document.createElement('button');
       tab.className = 'layer-tab' + (isActive ? ' active' : '');
       if (isActive) tab.style.background = color;
+      tab.title = `${label} layer`;
+      if (!isVisible) {
+        tab.title = `${label} layer (hidden)`;
+      }
 
       tab.innerHTML =
+        `${icon ? `<span class="layer-icon">${icon}</span>` : ''}` +
         `<span class="layer-dot" style="background:${color}"></span>` +
-        `<span>${label}</span>` +
+        `<span class="layer-label layer-label-long">${label}</span>` +
+        `<span class="layer-label layer-label-short">${shortLabel}</span>` +
         `<span class="layer-vis${isVisible ? '' : ' hidden'}" data-layer="${layerName}" title="Toggle visibility (${keyNum})">${isVisible ? '\u25C9' : '\u25CB'}</span>`;
 
       tab.addEventListener('click', (e) => {
