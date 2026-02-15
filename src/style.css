@@ -977,6 +977,46 @@ main {
   #tools-panel {
     border-bottom: 1px solid var(--border);
     flex: 0 0 auto;
+    max-height: 82px;
+    overflow-y: hidden;
+    overflow-x: auto;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  #tools-panel .panel-title.tools-snap-title,
+  #tools-panel .tools-snap-group {
+    display: none;
+  }
+
+  #tools-panel .tool-group {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+    margin-bottom: 0;
+  }
+
+  #tools-panel .tool-btn {
+    justify-content: center;
+    width: var(--touch-target);
+    min-width: var(--touch-target);
+    height: var(--touch-target);
+    min-height: var(--touch-target);
+    padding: 0;
+  }
+
+  #tools-panel .tool-btn span {
+    display: none;
+  }
+
+  #tools-panel .tool-btn svg {
+    width: 22px;
+    height: 22px;
   }
 
   #canvas-container {

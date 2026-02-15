@@ -200,8 +200,8 @@ export const template = `
           </button>
         </div>
 
-        <div class="panel-title" style="margin-top:16px">Snap</div>
-        <div class="tool-group">
+        <div class="panel-title tools-snap-title" style="margin-top:16px">Snap</div>
+        <div class="tool-group tools-snap-group">
           <label class="checkbox-label"><input type="checkbox" id="snap-grid" checked> Grid</label>
           <label class="checkbox-label"><input type="checkbox" id="snap-angle" checked> Angle
             <select id="snap-angle-deg" style="margin-left:4px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-family:var(--font-mono)">
