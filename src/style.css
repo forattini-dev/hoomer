@@ -970,18 +970,59 @@ main {
   }
 
   #creative-toolbar,
-  #story-bar,
-  #layer-bar {
+  #story-layer-row {
     overflow-x: auto;
     white-space: nowrap;
   }
 
   #tab-bar,
   #creative-toolbar,
-  #story-bar,
-  #layer-bar {
+  #story-layer-row {
     min-height: 44px;
     padding-inline: 8px;
+  }
+
+  #story-layer-row {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  #story-layer-row #story-bar {
+    flex: 0 1 45%;
+    min-width: 180px;
+    max-width: 360px;
+    height: auto;
+    border-bottom: 0;
+    padding: 0 6px;
+    display: flex;
+  }
+
+  #story-layer-row #layer-bar {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: auto;
+    border-bottom: 0;
+    padding: 0 8px 0 0;
+    display: flex;
+  }
+
+  #story-layer-row #story-tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+    gap: 3px;
+  }
+
+  #story-layer-row #btn-add-story,
+  #story-layer-row #btn-remove-story {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
   }
 
   main {

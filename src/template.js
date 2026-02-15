@@ -38,16 +38,18 @@ export const template = `
       </div>
     </div>
 
-    <!-- Story Tabs -->
-    <div id="story-bar">
-      <div id="story-tabs"></div>
-      <button id="btn-add-story" title="Add Floor">+</button>
-      <button id="btn-remove-story" title="Remove Floor" disabled>&minus;</button>
-    </div>
+    <div id="story-layer-row">
+      <!-- Story Tabs -->
+      <div id="story-bar">
+        <div id="story-tabs"></div>
+        <button id="btn-add-story" title="Add Floor">+</button>
+        <button id="btn-remove-story" title="Remove Floor" disabled>&minus;</button>
+      </div>
 
-    <!-- Layer Bar -->
-    <div id="layer-bar">
-      <div id="layer-tabs"></div>
+      <!-- Layer Bar -->
+      <div id="layer-bar">
+        <div id="layer-tabs"></div>
+      </div>
     </div>
 
     <main>
