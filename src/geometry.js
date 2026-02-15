@@ -102,11 +102,8 @@ export const Geom = {
   },
 
   formatLength(cm) {
-    if (cm >= 100) {
-      const m = Math.floor(cm / 100);
-      const rest = Math.round(cm % 100);
-      return rest > 0 ? `${m}m ${rest}cm` : `${m}m`;
-    }
-    return `${Math.round(cm)}cm`;
+    const m = cm / 100;
+    const rounded = Math.round(m * 100) / 100;
+    return `${rounded}m`;
   },
 };
