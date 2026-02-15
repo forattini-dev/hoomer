@@ -1044,7 +1044,12 @@ main {
   color: #8a3024;
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1280px), (pointer: coarse), (hover: none) {
+  :host {
+    --touch-target: 40px;
+    --toolbar-h: 42px;
+    --statusbar-h: 26px;
+  }
   :host {
     --panel-w: 100%;
     --toolbar-h: 46px;

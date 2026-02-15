@@ -1,6 +1,5 @@
 import { CONFIG } from './config.js';
 import { Geom } from './geometry.js';
-import { Materials } from './materials.js';
 import { Wall } from './Wall.js';
 import { Floor } from './Floor.js';
 import { Door } from './Door.js';
@@ -14,11 +13,12 @@ import { ElectricalSymbol } from './ElectricalSymbol.js';
 import { Pipe } from './Pipe.js';
 import { PlumbingSymbol } from './PlumbingSymbol.js';
 import { Furniture } from './Furniture.js';
-import { BomCalculator } from './BomCalculator.js';
 import { History } from './History.js';
 import { Renderer } from './Renderer.js';
 import { Viewer3D } from './Viewer3D.js';
 import { ShareManager } from './ShareManager.js';
+import { exportPNG, exportJSON } from './ExportManager.js';
+import { CostsView } from './CostsView.js';
 
 function storyName(i) {
   return i === 0 ? 'Ground Floor' : `Floor ${i}`;
@@ -157,8 +157,8 @@ export class App {
 
     // Tab state
     this.activeTab = 'creative';
-    this.unitPrices = {};
     this.projectName = 'Untitled Project';
+    this.costsView = new CostsView(sel => this.$(sel), msg => this._status(msg));
 
     // 3D state
     this.viewer3D = null;
@@ -303,7 +303,7 @@ export class App {
       activeStoryIndex: this.activeStoryIndex,
       activeTool: this.activeTool,
       projectName: this.projectName,
-      unitPrices: { ...this.unitPrices },
+      unitPrices: this._cloneUnitPrices(),
       stories: this.stories.map(s => ({
         name: s.name,
         activeLayer: s.activeLayer,
@@ -340,17 +340,26 @@ export class App {
     };
   }
 
+  _cloneUnitPrices() {
+    return { ...(this.costsView.unitPrices || {}) };
+  }
+
+  _setUnitPrices(prices) {
+    if (prices && typeof prices === 'object' && !Array.isArray(prices)) {
+      this.costsView.unitPrices = { ...prices };
+    } else {
+      this.costsView.unitPrices = {};
+    }
+  }
+
   _setState(state) {
-    this.activeStoryIndex = state.activeStoryIndex;
-    this.activeTool = state.activeTool || this.activeTool || 'wall';
-    this.projectName = state.projectName || this.projectName || 'Untitled Project';
-    this.unitPrices = state.unitPrices || this.unitPrices || {};
-    this.stories = state.stories.map(s => {
+    const storiesData = Array.isArray(state?.stories) ? state.stories : [];
+    const parsedStories = storiesData.map((s) => {
       // Migration: old format without layers
       if (!s.layers) return this._migrateOldStory(s);
 
-      const struct = s.layers.structure;
-      const walls = struct.walls.map(w => Wall.fromData(w));
+      const struct = s.layers.structure || {};
+      const walls = (Array.isArray(struct.walls) ? struct.walls : []).map(w => Wall.fromData(w));
       const doors = (struct.doors || []).map(d => {
         if (d.wallIndex < 0 || d.wallIndex >= walls.length) return null;
         return Door.fromData(d, walls[d.wallIndex]);
@@ -359,22 +368,22 @@ export class App {
         if (w.wallIndex < 0 || w.wallIndex >= walls.length) return null;
         return Window.fromData(w, walls[w.wallIndex]);
       }).filter(Boolean);
-      const floors = struct.floors.map(f => Floor.fromData(f));
-      const stairs = (struct.stairs || []).map(st => Stair.fromData(st));
-      const labels = (struct.labels || []).map(lb => Label.fromData(lb));
+      const floors = (Array.isArray(struct.floors) ? struct.floors : []).map(f => Floor.fromData(f));
+      const stairs = (Array.isArray(struct.stairs) ? struct.stairs : []).map(st => Stair.fromData(st));
+      const labels = (Array.isArray(struct.labels) ? struct.labels : []).map(lb => Label.fromData(lb));
 
       const elec = s.layers.electrical || {};
-      const panels = (elec.panels || []).map(p => ElectricalPanel.fromData(p));
-      const circuits = (elec.circuits || []).map(c => ElectricalCircuit.fromData(c));
-      const wires = (elec.wires || []).map(w => Wire.fromData(w));
-      const esymbols = (elec.symbols || []).map(sym => ElectricalSymbol.fromData(sym));
+      const panels = (Array.isArray(elec.panels) ? elec.panels : []).map(p => ElectricalPanel.fromData(p));
+      const circuits = (Array.isArray(elec.circuits) ? elec.circuits : []).map(c => ElectricalCircuit.fromData(c));
+      const wires = (Array.isArray(elec.wires) ? elec.wires : []).map(w => Wire.fromData(w));
+      const esymbols = (Array.isArray(elec.symbols) ? elec.symbols : []).map(sym => ElectricalSymbol.fromData(sym));
 
       const plumb = s.layers.plumbing || {};
-      const pipes = (plumb.pipes || []).map(p => Pipe.fromData(p));
-      const psymbols = (plumb.symbols || []).map(sym => PlumbingSymbol.fromData(sym));
+      const pipes = (Array.isArray(plumb.pipes) ? plumb.pipes : []).map(p => Pipe.fromData(p));
+      const psymbols = (Array.isArray(plumb.symbols) ? plumb.symbols : []).map(sym => PlumbingSymbol.fromData(sym));
 
       const furn = s.layers.furniture || {};
-      const furnitureItems = (furn.items || []).map(f => Furniture.fromData(f));
+      const furnitureItems = (Array.isArray(furn.items) ? furn.items : []).map(f => Furniture.fromData(f));
 
       return {
         name: s.name,
@@ -389,6 +398,18 @@ export class App {
         },
       };
     });
+
+    if (!parsedStories.length) {
+      parsedStories.push(createLayeredStory(storyName(0)));
+    }
+
+    this.activeStoryIndex = Number.isInteger(state?.activeStoryIndex) && state.activeStoryIndex >= 0
+      ? Math.min(parsedStories.length - 1, state.activeStoryIndex)
+      : 0;
+    this.activeTool = state.activeTool || this.activeTool || 'wall';
+    this.projectName = state.projectName || this.projectName || 'Untitled Project';
+    this._setUnitPrices(state.unitPrices);
+    this.stories = parsedStories;
     this._clearSelection();
     this._syncStoryTabs();
     this._syncLayerTabs();
@@ -396,6 +417,9 @@ export class App {
     this._ensureValidTool();
     this._syncActiveToolButton();
     this._refreshCircuitSelects();
+    if (this.activeTab === 'costs') {
+      this.costsView.render(this.stories);
+    }
   }
 
   _getStoryElevation(index) {
@@ -701,7 +725,7 @@ export class App {
         this._addLabelAt(snapped.x, snapped.y);
         break;
       case 'wire':
-        this._addWirePoint(snapped.x, snapped.y);
+        this._addPolylinePoint(snapped.x, snapped.y);
         break;
       case 'panel':
         this._addPanelAt(snapped.x, snapped.y);
@@ -710,7 +734,7 @@ export class App {
         this._addElectricalSymbolAt(snapped.x, snapped.y);
         break;
       case 'pipe':
-        this._addPipePoint(snapped.x, snapped.y);
+        this._addPolylinePoint(snapped.x, snapped.y);
         break;
       case 'plumbing_symbol':
         this._addPlumbingSymbolAt(snapped.x, snapped.y);
@@ -1116,19 +1140,12 @@ export class App {
     this._status('Label added');
   }
 
-  // ── Wire Operations (polyline) ──────────────
-  _addWirePoint(wx, wy) {
+  // ── Polyline Operations (wire/pipe) ─────────
+  _addPolylinePoint(wx, wy) {
     this.polylinePoints.push({ x: wx, y: wy });
     if (this.polylinePoints.length === 1) {
-      this._status('Click to add points, ESC to finish wire');
-    }
-    this._render();
-  }
-
-  _addPipePoint(wx, wy) {
-    this.polylinePoints.push({ x: wx, y: wy });
-    if (this.polylinePoints.length === 1) {
-      this._status('Click to add points, ESC to finish pipe');
+      const toolName = this.activeTool === 'wire' ? 'wire' : 'pipe';
+      this._status(`Click to add points, ESC to finish ${toolName}`);
     }
     this._render();
   }
@@ -1700,7 +1717,7 @@ export class App {
     if (project) project.style.display = tabName === 'project' ? '' : 'none';
 
     if (tabName === 'costs') {
-      this._renderCostsView();
+      this.costsView.render(this.stories);
     } else if (tabName === 'project') {
       this._syncProjectTab();
     } else if (tabName === 'creative') {
@@ -1708,124 +1725,6 @@ export class App {
       this._render();
       if (this.is3DMode && this.viewer3D) this.viewer3D.resize();
     }
-  }
-
-  // ── Costs View ────────────────────────────────
-  _renderCostsView() {
-    const bom = BomCalculator.calculate(this.stories);
-    this._bomData = bom;
-    const container = this.$('costs-content');
-    if (!container) return;
-
-    if (bom.totals.length === 0) {
-      container.innerHTML = '<div class="costs-inner"><div class="cost-empty">No items in the project yet. Add walls, doors, windows and other elements in the Creative tab.</div></div>';
-      return;
-    }
-
-    // Group by category
-    const categories = {};
-    for (const item of bom.totals) {
-      if (!categories[item.category]) categories[item.category] = [];
-      categories[item.category].push(item);
-    }
-
-    let html = '<div class="costs-inner">';
-    for (const [cat, items] of Object.entries(categories)) {
-      html += `<div class="cost-category">`;
-      html += `<div class="cost-category-title">${cat}</div>`;
-      html += '<table class="cost-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead><tbody>';
-      for (const item of items) {
-        const key = `${item.category}|${item.description}`;
-        const price = this.unitPrices[key] || 0;
-        const qty = parseFloat(item.quantity);
-        const total = (qty * price).toFixed(2);
-        html += `<tr>
-          <td>${item.description}</td>
-          <td style="font-family:var(--font-mono);text-align:right">${item.quantity}</td>
-          <td>${item.unit}</td>
-          <td style="text-align:right"><input type="number" class="cost-price-input" data-key="${key}" value="${price}" min="0" step="0.01"></td>
-          <td class="cost-item-total" data-key="${key}">${total}</td>
-        </tr>`;
-      }
-      html += '</tbody></table></div>';
-    }
-
-    // Grand total
-    html += '<div class="cost-grand-total"><span class="total-label">Grand Total</span><span class="total-value" id="cost-grand-total-value">0.00</span></div>';
-
-    // Story breakdown toggle
-    html += '<button class="cost-breakdown-toggle" id="cost-breakdown-btn">Show Story Breakdown</button>';
-    html += '<div class="cost-story-breakdown" id="cost-story-breakdown" style="display:none"></div>';
-
-    html += '</div>';
-    container.innerHTML = html;
-
-    // Bind price inputs
-    for (const input of container.querySelectorAll('.cost-price-input')) {
-      input.addEventListener('input', () => {
-        const key = input.dataset.key;
-        this.unitPrices[key] = parseFloat(input.value) || 0;
-        this._recalcCosts();
-      });
-    }
-
-    // Breakdown toggle
-    const breakdownBtn = this.$('cost-breakdown-btn');
-    if (breakdownBtn) {
-      breakdownBtn.addEventListener('click', () => {
-        const bd = this.$('cost-story-breakdown');
-        if (!bd) return;
-        if (bd.style.display === 'none') {
-          bd.style.display = '';
-          breakdownBtn.textContent = 'Hide Story Breakdown';
-          this._renderStoryBreakdown(bom);
-        } else {
-          bd.style.display = 'none';
-          breakdownBtn.textContent = 'Show Story Breakdown';
-        }
-      });
-    }
-
-    this._recalcCosts();
-  }
-
-  _recalcCosts() {
-    let grandTotal = 0;
-    const container = this.$('costs-content');
-    if (!container) return;
-    for (const td of container.querySelectorAll('.cost-item-total')) {
-      const key = td.dataset.key;
-      const price = this.unitPrices[key] || 0;
-      // Find matching item in bom
-      const item = this._bomData?.totals?.find(i => `${i.category}|${i.description}` === key);
-      if (item) {
-        const qty = parseFloat(item.quantity);
-        const total = qty * price;
-        td.textContent = total.toFixed(2);
-        grandTotal += total;
-      }
-    }
-    const gtEl = this.$('cost-grand-total-value');
-    if (gtEl) gtEl.textContent = grandTotal.toFixed(2);
-  }
-
-  _renderStoryBreakdown(bom) {
-    const bd = this.$('cost-story-breakdown');
-    if (!bd) return;
-    let html = '';
-    for (const s of bom.stories) {
-      html += `<div class="cost-story-title">${s.name}</div>`;
-      if (s.items.length === 0) {
-        html += '<div class="cost-empty">No items</div>';
-        continue;
-      }
-      html += '<table class="cost-table"><thead><tr><th>Category</th><th>Description</th><th>Qty</th><th>Unit</th></tr></thead><tbody>';
-      for (const item of s.items) {
-        html += `<tr><td>${item.category}</td><td>${item.description}</td><td style="font-family:var(--font-mono);text-align:right">${item.quantity}</td><td>${item.unit}</td></tr>`;
-      }
-      html += '</tbody></table>';
-    }
-    bd.innerHTML = html;
   }
 
   // ── Project Tab ───────────────────────────────
@@ -1891,14 +1790,7 @@ export class App {
       axisOrigin: this.axisOrigin,
       showTerrain: this.showTerrain,
     };
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${this.projectName.replace(/\s+/g, '-').toLowerCase()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    exportJSON(data, this.projectName);
     this._status('JSON exported');
   }
 
@@ -1924,7 +1816,7 @@ export class App {
     this._pushHistory();
     this._setState(data);
     if (data.projectName) this.projectName = data.projectName;
-    if (data.unitPrices) this.unitPrices = data.unitPrices;
+    this._setUnitPrices(data.unitPrices);
     if (data.terrainWidth) this.terrainWidth = data.terrainWidth;
     if (data.terrainHeight) this.terrainHeight = data.terrainHeight;
     if (data.axisOrigin) this.axisOrigin = data.axisOrigin;
@@ -2057,25 +1949,6 @@ export class App {
     cancelBtn.addEventListener('click', onCancel);
     backdrop.addEventListener('click', onCancel);
     input.addEventListener('keydown', onKeyDown);
-  }
-
-  _bomCopyClipboard() {
-    if (!this._bomData) return;
-    const text = BomCalculator.toText(this._bomData);
-    navigator.clipboard.writeText(text).then(() => this._status('BOM copied to clipboard'));
-  }
-
-  _bomDownloadCSV() {
-    if (!this._bomData) return;
-    const csv = BomCalculator.toCSVWithPrices(this._bomData, this.unitPrices);
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'bill-of-materials.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-    this._status('CSV downloaded');
   }
 
   // ── Undo / Redo ─────────────────────────────
@@ -2238,9 +2111,9 @@ export class App {
     // Wall thickness
     this._bindBtnGroup('#wall-thickness-group .prop-btn', btn => { this.wallThickness = parseInt(btn.dataset.value); });
     // Wall material
-    this._bindMaterialGroup('#wall-material-group .material-btn', btn => { this.wallMaterial = btn.dataset.material; });
+    this._bindBtnGroup('#wall-material-group .material-btn', btn => { this.wallMaterial = btn.dataset.material; });
     // Floor material
-    this._bindMaterialGroup('#floor-material-group .material-btn', btn => { this.floorMaterial = btn.dataset.material; });
+    this._bindBtnGroup('#floor-material-group .material-btn', btn => { this.floorMaterial = btn.dataset.material; });
     // Floor mode
     this._bindBtnGroup('#floor-mode-group .prop-btn', btn => {
       this.floorMode = btn.dataset.value;
@@ -2549,8 +2422,8 @@ export class App {
     }
 
     // Costs tab
-    this.$('costs-copy').addEventListener('click', () => this._bomCopyClipboard());
-    this.$('costs-csv').addEventListener('click', () => this._bomDownloadCSV());
+    this.$('costs-copy').addEventListener('click', () => this.costsView.copyClipboard());
+    this.$('costs-csv').addEventListener('click', () => this.costsView.downloadCSV());
 
     // Stories
     this.$('btn-add-story').addEventListener('click', () => this._addStory());
@@ -2602,17 +2475,6 @@ export class App {
   }
 
   _bindBtnGroup(selector, callback) {
-    const btns = this.$$(selector);
-    for (const btn of btns) {
-      btn.addEventListener('click', () => {
-        btns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        callback(btn);
-      });
-    }
-  }
-
-  _bindMaterialGroup(selector, callback) {
     const btns = this.$$(selector);
     for (const btn of btns) {
       btn.addEventListener('click', () => {
@@ -2956,157 +2818,10 @@ export class App {
 
   // ── Export PNG ───────────────────────────────
   _exportPNG() {
-    const struct = this.currentStory.layers.structure;
-    const elec = this.currentStory.layers.electrical;
-    const plumb = this.currentStory.layers.plumbing;
-    const furn = this.currentStory.layers.furniture;
-    const hasContent = struct.walls.length || struct.stairs.length || struct.labels.length ||
-      elec.panels.length || elec.wires.length || elec.symbols.length || plumb.pipes.length || plumb.symbols.length ||
-      furn.items.length;
-    if (!hasContent) { this._status('Nothing to export'); return; }
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const wall of struct.walls) {
-      for (const p of wall.rect) {
-        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
-      }
+    if (!exportPNG(this.currentStory, this.renderer, this.currentStory.name)) {
+      this._status('Nothing to export');
+      return;
     }
-    for (const stair of struct.stairs) {
-      for (const p of stair.corners) {
-        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
-      }
-    }
-    for (const label of struct.labels) {
-      const charW = label.fontSize * 0.6;
-      const hw = label.text.length * charW / 2;
-      const hh = label.fontSize;
-      minX = Math.min(minX, label.x - hw); minY = Math.min(minY, label.y - hh);
-      maxX = Math.max(maxX, label.x + hw); maxY = Math.max(maxY, label.y + hh);
-    }
-    for (const wire of elec.wires) {
-      for (const p of wire.points) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
-    }
-    for (const sym of elec.symbols) {
-      minX = Math.min(minX, sym.x - 20); minY = Math.min(minY, sym.y - 20); maxX = Math.max(maxX, sym.x + 20); maxY = Math.max(maxY, sym.y + 20);
-    }
-    for (const panel of elec.panels) {
-      minX = Math.min(minX, panel.x - 30); minY = Math.min(minY, panel.y - 24); maxX = Math.max(maxX, panel.x + 30); maxY = Math.max(maxY, panel.y + 24);
-    }
-    for (const pipe of plumb.pipes) {
-      for (const p of pipe.points) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
-    }
-    for (const sym of plumb.symbols) {
-      minX = Math.min(minX, sym.x - 20); minY = Math.min(minY, sym.y - 20); maxX = Math.max(maxX, sym.x + 20); maxY = Math.max(maxY, sym.y + 20);
-    }
-    for (const item of furn.items) {
-      const cat = CONFIG.FURNITURE_CATALOG[item.furnitureType];
-      if (!cat) continue;
-      const half = Math.max(cat.w, cat.d) / 2 + 10;
-      minX = Math.min(minX, item.x - half); minY = Math.min(minY, item.y - half);
-      maxX = Math.max(maxX, item.x + half); maxY = Math.max(maxY, item.y + half);
-    }
-
-    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 100; maxY = 100; }
-
-    const pad = 100;
-    const ew = maxX - minX + pad * 2;
-    const eh = maxY - minY + pad * 2;
-
-    const c = document.createElement('canvas');
-    c.width = ew * 2; c.height = eh * 2;
-    const g = c.getContext('2d');
-    g.scale(2, 2);
-    g.fillStyle = '#fff';
-    g.fillRect(0, 0, ew, eh);
-    g.save();
-    g.translate(-minX + pad, -minY + pad);
-
-    // Floors
-    for (const floor of struct.floors) {
-      g.beginPath();
-      g.moveTo(floor.polygon[0].x, floor.polygon[0].y);
-      for (let i = 1; i < floor.polygon.length; i++) g.lineTo(floor.polygon[i].x, floor.polygon[i].y);
-      g.closePath();
-      g.fillStyle = Materials.getFloor(floor.material, g) || '#f0e8d8';
-      g.fill();
-    }
-    // Corner joins (before walls so strokes cover edges)
-    const endpointMap = Geom.buildEndpointMap(struct.walls);
-    for (const [, joint] of endpointMap) {
-      if (joint.connections.length < 2) continue;
-      const poly = Geom.cornerFillPolygon(joint);
-      if (!poly || poly.length < 3) continue;
-      g.beginPath();
-      g.moveTo(poly[0].x, poly[0].y);
-      for (let i = 1; i < poly.length; i++) g.lineTo(poly[i].x, poly[i].y);
-      g.closePath();
-      g.fillStyle = Materials.getWall(joint.connections[0].wall.material, g) || '#95a5a6';
-      g.fill();
-    }
-    // Walls
-    for (const wall of struct.walls) {
-      const rect = wall.rect;
-      g.beginPath();
-      g.moveTo(rect[0].x, rect[0].y);
-      for (let i = 1; i < rect.length; i++) g.lineTo(rect[i].x, rect[i].y);
-      g.closePath();
-      g.fillStyle = Materials.getWall(wall.material, g) || '#95a5a6';
-      g.fill();
-      g.strokeStyle = '#5a5550'; g.lineWidth = 1.5; g.stroke();
-    }
-    // Doors
-    for (const door of struct.doors) { this.renderer.drawDoorExport(g, door); }
-    // Windows
-    for (const win of struct.windows) { this.renderer.drawWindowExport(g, win); }
-    // Stairs
-    for (const stair of struct.stairs) { this.renderer.drawStairExport(g, stair); }
-    // Labels
-    for (const label of struct.labels) { this.renderer.drawLabelExport(g, label); }
-    // Wires
-    for (const wire of elec.wires) { this.renderer.drawWireExport(g, wire); }
-    // Panels
-    for (const panel of elec.panels) { this.renderer.drawElectricalPanelExport(g, panel); }
-    // Electrical Symbols
-    for (const sym of elec.symbols) { this.renderer.drawElectricalSymbolExport(g, sym); }
-    // Pipes
-    for (const pipe of plumb.pipes) { this.renderer.drawPipeExport(g, pipe); }
-    // Plumbing Symbols
-    for (const sym of plumb.symbols) { this.renderer.drawPlumbingSymbolExport(g, sym); }
-    // Furniture
-    for (const item of furn.items) { this.renderer.drawFurnitureExport(g, item); }
-    // Dimensions
-    for (const wall of struct.walls) {
-      const length = wall.length;
-      if (length < 20) continue;
-      const mx = (wall.x1 + wall.x2) / 2, my = (wall.y1 + wall.y2) / 2;
-      const angle = Geom.angle(wall.x1, wall.y1, wall.x2, wall.y2);
-      const perp = angle + Math.PI / 2;
-      const off = wall.thickness / 2 + 20;
-      g.save();
-      g.translate(mx + Math.cos(perp) * off, my + Math.sin(perp) * off);
-      let ta = angle;
-      if (ta > Math.PI / 2) ta -= Math.PI;
-      if (ta < -Math.PI / 2) ta += Math.PI;
-      g.rotate(ta);
-      g.font = '600 12px "Segoe UI", system-ui, sans-serif';
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      const text = Geom.formatLength(length);
-      const m = g.measureText(text);
-      g.fillStyle = 'rgba(255,255,255,0.9)';
-      g.fillRect(-m.width / 2 - 3, -9, m.width + 6, 18);
-      g.fillStyle = '#5a5550';
-      g.fillText(text, 0, 0);
-      g.restore();
-    }
-
-    g.restore();
-
-    const link = document.createElement('a');
-    link.download = `floorplan-${this.currentStory.name.toLowerCase().replace(/\s/g, '-')}.png`;
-    link.href = c.toDataURL('image/png');
-    link.click();
     this._status('PNG exported!');
   }
 

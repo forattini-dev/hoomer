@@ -1,6 +1,9 @@
 import { CONFIG } from './config.js';
 import { Geom } from './geometry.js';
 import { Materials } from './materials.js';
+import { drawFurnitureShape } from './FurnitureShapes.js';
+
+const { SELECTION, TEXT } = CONFIG.COLORS;
 
 export class Renderer {
   constructor(canvas) {
@@ -20,6 +23,31 @@ export class Renderer {
 
   get width() { return this.canvas.width / this.dpr; }
   get height() { return this.canvas.height / this.dpr; }
+
+  // ── Shared Helpers ───────────────────────────
+  _drawTextWithBg(ctx, text, x, y, { fontSize, zoom = 1, textColor = CONFIG.COLORS.TEXT, bgColor = 'rgba(255,255,255,0.85)', pad, align = 'center', baseline = 'middle', fontWeight = '600' } = {}) {
+    const p = pad ?? 2 / zoom;
+    ctx.font = `${fontWeight} ${fontSize}px ${CONFIG.FONT_FAMILY}`;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    const metrics = ctx.measureText(text);
+    const bx = align === 'center' ? x - metrics.width / 2 - p : x - p;
+    const by = baseline === 'middle' ? y - fontSize / 2 - p : y - p;
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(bx, by, metrics.width + p * 2, fontSize + p * 2);
+    ctx.fillStyle = textColor;
+    ctx.fillText(text, x, y);
+  }
+
+  _drawSelectionDash(ctx, zoom) {
+    ctx.strokeStyle = CONFIG.COLORS.SELECTION;
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.setLineDash([5 / zoom, 3 / zoom]);
+  }
+
+  _endDash(ctx) {
+    ctx.setLineDash([]);
+  }
 
   render(state) {
     const ctx = this.ctx;
@@ -194,7 +222,7 @@ export class Renderer {
 
     if (zoom > 0.3) {
       ctx.fillStyle = '#b0aca5';
-      ctx.font = `${11 / zoom}px "Segoe UI", system-ui, sans-serif`;
+      ctx.font = `${11 / zoom}px ${CONFIG.FONT_FAMILY}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       for (let x = startX; x <= endX; x += majorEvery) {
         if (x === 0) continue;
@@ -218,16 +246,16 @@ export class Renderer {
     ctx.closePath();
     ctx.fillStyle = Materials.getWall(wall.material, ctx) || '#95a5a6';
     ctx.fill();
-    ctx.strokeStyle = isSelected ? '#7b96aa' : isHovered ? '#9ab3c5' : '#5a5550';
+    ctx.strokeStyle = isSelected ? SELECTION : isHovered ? '#9ab3c5' : TEXT;
     ctx.lineWidth = isSelected ? 2.5 / zoom : 1.5 / zoom;
     ctx.stroke();
     if (isSelected) {
       ctx.setLineDash([6 / zoom, 4 / zoom]);
-      ctx.strokeStyle = '#7b96aa'; ctx.lineWidth = 1.5 / zoom; ctx.stroke();
+      ctx.strokeStyle = SELECTION; ctx.lineWidth = 1.5 / zoom; ctx.stroke();
       ctx.setLineDash([]);
       for (const pt of [{ x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }]) {
         ctx.beginPath(); ctx.arc(pt.x, pt.y, 4 / zoom, 0, Math.PI * 2);
-        ctx.fillStyle = '#7b96aa'; ctx.fill();
+        ctx.fillStyle = SELECTION; ctx.fill();
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 / zoom; ctx.stroke();
       }
     }
@@ -277,7 +305,7 @@ export class Renderer {
     ctx.fillStyle = Materials.getFloor(floor.material, ctx) || '#f0e8d8';
     ctx.fill();
     if (isSelected) {
-      ctx.strokeStyle = '#7b96aa'; ctx.lineWidth = 2 / zoom;
+      ctx.strokeStyle = SELECTION; ctx.lineWidth = 2 / zoom;
       ctx.setLineDash([6 / zoom, 4 / zoom]); ctx.stroke(); ctx.setLineDash([]);
     }
     ctx.restore();
@@ -314,7 +342,7 @@ export class Renderer {
     ctx.fill();
 
     // Wall end caps at gap edges
-    ctx.strokeStyle = '#5a5550';
+    ctx.strokeStyle = TEXT;
     ctx.lineWidth = 1.5 / zoom;
     ctx.beginPath();
     ctx.moveTo(p1.x + gpdx, p1.y + gpdy);
@@ -335,7 +363,7 @@ export class Renderer {
 
     // Selection highlight
     if (isSelected) {
-      ctx.strokeStyle = '#7b96aa';
+      ctx.strokeStyle = SELECTION;
       ctx.lineWidth = 1 / zoom;
       ctx.setLineDash([4 / zoom, 3 / zoom]);
       ctx.beginPath();
@@ -353,7 +381,7 @@ export class Renderer {
 
     const leafEnd = { x: hinge.x + pdx * door.width, y: hinge.y + pdy * door.width };
 
-    ctx.strokeStyle = isSelected ? '#7b96aa' : '#5a5550';
+    ctx.strokeStyle = isSelected ? SELECTION : TEXT;
     ctx.lineWidth = 2 / zoom;
     ctx.beginPath();
     ctx.moveTo(hinge.x, hinge.y);
@@ -374,7 +402,7 @@ export class Renderer {
 
     ctx.beginPath();
     ctx.arc(hinge.x, hinge.y, 2.5 / zoom, 0, Math.PI * 2);
-    ctx.fillStyle = isSelected ? '#7b96aa' : '#5a5550';
+    ctx.fillStyle = isSelected ? SELECTION : TEXT;
     ctx.fill();
   }
 
@@ -384,7 +412,7 @@ export class Renderer {
     const leafEnd1 = { x: center.x + pdx * halfWidth, y: center.y + pdy * halfWidth };
     const leafEnd2 = { x: center.x - pdx * halfWidth, y: center.y - pdy * halfWidth };
 
-    ctx.strokeStyle = isSelected ? '#7b96aa' : '#5a5550';
+    ctx.strokeStyle = isSelected ? SELECTION : TEXT;
     ctx.lineWidth = 2 / zoom;
     ctx.beginPath();
     ctx.moveTo(center.x, center.y);
@@ -413,7 +441,7 @@ export class Renderer {
 
     ctx.beginPath();
     ctx.arc(center.x, center.y, 2.5 / zoom, 0, Math.PI * 2);
-    ctx.fillStyle = isSelected ? '#7b96aa' : '#5a5550';
+    ctx.fillStyle = isSelected ? SELECTION : TEXT;
     ctx.fill();
   }
 
@@ -428,7 +456,7 @@ export class Renderer {
     const px1 = { x: panelCenter.x - wdx * panelWidth / 2, y: panelCenter.y - wdy * panelWidth / 2 };
     const px2 = { x: panelCenter.x + wdx * panelWidth / 2, y: panelCenter.y + wdy * panelWidth / 2 };
 
-    ctx.strokeStyle = isSelected ? '#7b96aa' : '#5a5550';
+    ctx.strokeStyle = isSelected ? SELECTION : TEXT;
     ctx.lineWidth = panelThick;
     ctx.beginPath();
     ctx.moveTo(px1.x, px1.y);
@@ -488,7 +516,7 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
-    ctx.strokeStyle = '#5a5550';
+    ctx.strokeStyle = TEXT;
     ctx.lineWidth = 1.5 / zoom;
     ctx.beginPath();
     ctx.moveTo(p1.x + gpdx, p1.y + gpdy);
@@ -501,80 +529,23 @@ export class Renderer {
     const ndx = Math.cos(perpAngle);
     const ndy = Math.sin(perpAngle);
     const glassOffset = wall.thickness * 0.3;
+    const glassColor = isSelected ? CONFIG.COLORS.SELECTION : '#5896b0';
 
     if (winType === 'fixed') {
-      ctx.strokeStyle = isSelected ? '#7b96aa' : '#5896b0';
-      ctx.lineWidth = 1.5 / zoom;
-      for (const sign of [-1, 1]) {
-        const off = glassOffset * sign;
-        ctx.beginPath();
-        ctx.moveTo(p1.x + ndx * off, p1.y + ndy * off);
-        ctx.lineTo(p2.x + ndx * off, p2.y + ndy * off);
-        ctx.stroke();
-      }
+      this._drawWindowFixed(ctx, p1, p2, ndx, ndy, glassOffset, glassColor, zoom);
     } else if (winType === 'sliding') {
-      const panelW = win.width * 0.55;
-      const thick = 2 / zoom;
-      ctx.strokeStyle = isSelected ? '#7b96aa' : '#5896b0';
-      ctx.lineWidth = thick;
-
-      const lc = { x: center.x - wdx * win.width * 0.12, y: center.y - wdy * win.width * 0.12 };
-      ctx.beginPath();
-      ctx.moveTo(lc.x - wdx * panelW / 2 + ndx * glassOffset, lc.y - wdy * panelW / 2 + ndy * glassOffset);
-      ctx.lineTo(lc.x + wdx * panelW / 2 + ndx * glassOffset, lc.y + wdy * panelW / 2 + ndy * glassOffset);
-      ctx.stroke();
-
-      const rc = { x: center.x + wdx * win.width * 0.12, y: center.y + wdy * win.width * 0.12 };
-      ctx.beginPath();
-      ctx.moveTo(rc.x - wdx * panelW / 2 - ndx * glassOffset, rc.y - wdy * panelW / 2 - ndy * glassOffset);
-      ctx.lineTo(rc.x + wdx * panelW / 2 - ndx * glassOffset, rc.y + wdy * panelW / 2 - ndy * glassOffset);
-      ctx.stroke();
-
-      const arrowLen = win.width * 0.2;
-      ctx.strokeStyle = isSelected ? 'rgba(123,150,170,0.6)' : 'rgba(88,150,176,0.4)';
-      ctx.lineWidth = 1 / zoom;
-      ctx.setLineDash([2 / zoom, 2 / zoom]);
-      ctx.beginPath();
-      ctx.moveTo(center.x - wdx * arrowLen / 2, center.y - wdy * arrowLen / 2);
-      ctx.lineTo(center.x + wdx * arrowLen / 2, center.y + wdy * arrowLen / 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      this._drawWindowSliding(ctx, p1, p2, center, wdx, wdy, ndx, ndy, glassOffset, glassColor, win.width, isSelected, zoom);
     } else if (winType === 'casement') {
-      ctx.strokeStyle = isSelected ? '#7b96aa' : '#5896b0';
-      ctx.lineWidth = 1.5 / zoom;
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.stroke();
-
-      const arcRadius = win.width * 0.4;
-      const arcEnd = { x: p1.x + ndx * arcRadius, y: p1.y + ndy * arcRadius };
-      const arcStartAngle = Math.atan2(arcEnd.y - p1.y, arcEnd.x - p1.x);
-      const arcEndAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      ctx.strokeStyle = isSelected ? 'rgba(123,150,170,0.4)' : 'rgba(88,150,176,0.3)';
-      ctx.lineWidth = 1 / zoom;
-      ctx.setLineDash([2 / zoom, 2 / zoom]);
-      ctx.beginPath();
-      ctx.arc(p1.x, p1.y, arcRadius, arcStartAngle, arcEndAngle, true);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.strokeStyle = isSelected ? '#7b96aa' : '#5896b0';
-      ctx.lineWidth = 1 / zoom;
-      ctx.beginPath();
-      ctx.moveTo(p1.x, p1.y);
-      ctx.lineTo(arcEnd.x, arcEnd.y);
-      ctx.stroke();
+      this._drawWindowCasement(ctx, p1, p2, ndx, ndy, glassColor, win.width, isSelected, zoom);
     }
 
     if (isSelected) {
-      ctx.strokeStyle = '#7b96aa';
+      this._drawSelectionDash(ctx, zoom);
       ctx.lineWidth = 1 / zoom;
-      ctx.setLineDash([4 / zoom, 3 / zoom]);
       ctx.beginPath();
       ctx.arc(center.x, center.y, win.width / 2 + 5 / zoom, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.setLineDash([]);
+      this._endDash(ctx);
     }
 
     ctx.restore();
@@ -582,6 +553,74 @@ export class Renderer {
 
   drawWindowExport(ctx, win) {
     this._drawWindow(ctx, win, false, 1);
+  }
+
+  _drawWindowFixed(ctx, p1, p2, ndx, ndy, glassOffset, color, zoom) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5 / zoom;
+    for (const sign of [-1, 1]) {
+      const off = glassOffset * sign;
+      ctx.beginPath();
+      ctx.moveTo(p1.x + ndx * off, p1.y + ndy * off);
+      ctx.lineTo(p2.x + ndx * off, p2.y + ndy * off);
+      ctx.stroke();
+    }
+  }
+
+  _drawWindowSliding(ctx, p1, p2, center, wdx, wdy, ndx, ndy, glassOffset, color, width, isSelected, zoom) {
+    const panelW = width * 0.55;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2 / zoom;
+
+    const lc = { x: center.x - wdx * width * 0.12, y: center.y - wdy * width * 0.12 };
+    ctx.beginPath();
+    ctx.moveTo(lc.x - wdx * panelW / 2 + ndx * glassOffset, lc.y - wdy * panelW / 2 + ndy * glassOffset);
+    ctx.lineTo(lc.x + wdx * panelW / 2 + ndx * glassOffset, lc.y + wdy * panelW / 2 + ndy * glassOffset);
+    ctx.stroke();
+
+    const rc = { x: center.x + wdx * width * 0.12, y: center.y + wdy * width * 0.12 };
+    ctx.beginPath();
+    ctx.moveTo(rc.x - wdx * panelW / 2 - ndx * glassOffset, rc.y - wdy * panelW / 2 - ndy * glassOffset);
+    ctx.lineTo(rc.x + wdx * panelW / 2 - ndx * glassOffset, rc.y + wdy * panelW / 2 - ndy * glassOffset);
+    ctx.stroke();
+
+    const arrowLen = width * 0.2;
+    ctx.strokeStyle = isSelected ? 'rgba(123,150,170,0.6)' : 'rgba(88,150,176,0.4)';
+    ctx.lineWidth = 1 / zoom;
+    ctx.setLineDash([2 / zoom, 2 / zoom]);
+    ctx.beginPath();
+    ctx.moveTo(center.x - wdx * arrowLen / 2, center.y - wdy * arrowLen / 2);
+    ctx.lineTo(center.x + wdx * arrowLen / 2, center.y + wdy * arrowLen / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  _drawWindowCasement(ctx, p1, p2, ndx, ndy, color, width, isSelected, zoom) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+
+    const arcRadius = width * 0.4;
+    const arcEnd = { x: p1.x + ndx * arcRadius, y: p1.y + ndy * arcRadius };
+    const arcStartAngle = Math.atan2(arcEnd.y - p1.y, arcEnd.x - p1.x);
+    const arcEndAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    ctx.strokeStyle = isSelected ? 'rgba(123,150,170,0.4)' : 'rgba(88,150,176,0.3)';
+    ctx.lineWidth = 1 / zoom;
+    ctx.setLineDash([2 / zoom, 2 / zoom]);
+    ctx.beginPath();
+    ctx.arc(p1.x, p1.y, arcRadius, arcStartAngle, arcEndAngle, true);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1 / zoom;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(arcEnd.x, arcEnd.y);
+    ctx.stroke();
   }
 
   // ── Stairs ────────────────────────────────
@@ -607,7 +646,7 @@ export class Renderer {
     const midX = stair.width / 2;
     const arrowStart = stair.length * 0.85;
     const arrowEnd = stair.length * 0.15;
-    ctx.strokeStyle = '#5a5550';
+    ctx.strokeStyle = TEXT;
     ctx.lineWidth = 2 / zoom;
     ctx.beginPath();
     ctx.moveTo(midX, arrowStart); ctx.lineTo(midX, arrowEnd);
@@ -619,23 +658,23 @@ export class Renderer {
     ctx.lineTo(midX - headSize, arrowEnd + headSize * 1.8);
     ctx.lineTo(midX + headSize, arrowEnd + headSize * 1.8);
     ctx.closePath();
-    ctx.fillStyle = '#5a5550';
+    ctx.fillStyle = TEXT;
     ctx.fill();
 
     ctx.fillStyle = '#8a8580';
     const fontSize = Math.min(12, stair.width * 0.12);
-    ctx.font = `600 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `600 ${fontSize}px ${CONFIG.FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('UP', midX, stair.length * 0.55);
 
-    ctx.strokeStyle = isSelected ? '#7b96aa' : '#5a5550';
+    ctx.strokeStyle = isSelected ? SELECTION : TEXT;
     ctx.lineWidth = isSelected ? 2.5 / zoom : 1.5 / zoom;
     ctx.strokeRect(0, 0, stair.width, stair.length);
 
     if (isSelected) {
       ctx.setLineDash([6 / zoom, 4 / zoom]);
-      ctx.strokeStyle = '#7b96aa';
+      ctx.strokeStyle = SELECTION;
       ctx.lineWidth = 1.5 / zoom;
       ctx.strokeRect(-2 / zoom, -2 / zoom, stair.width + 4 / zoom, stair.length + 4 / zoom);
       ctx.setLineDash([]);
@@ -661,7 +700,7 @@ export class Renderer {
     }
 
     const midX = stair.width / 2;
-    ctx.strokeStyle = '#5a5550'; ctx.lineWidth = 2;
+    ctx.strokeStyle = TEXT; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(midX, stair.length * 0.85); ctx.lineTo(midX, stair.length * 0.15); ctx.stroke();
 
     const hs = Math.min(12, stair.width * 0.12);
@@ -669,14 +708,14 @@ export class Renderer {
     ctx.moveTo(midX, stair.length * 0.15);
     ctx.lineTo(midX - hs, stair.length * 0.15 + hs * 1.8);
     ctx.lineTo(midX + hs, stair.length * 0.15 + hs * 1.8);
-    ctx.closePath(); ctx.fillStyle = '#5a5550'; ctx.fill();
+    ctx.closePath(); ctx.fillStyle = TEXT; ctx.fill();
 
     ctx.fillStyle = '#8a8580';
-    ctx.font = `600 ${Math.min(12, stair.width * 0.12)}px "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `600 ${Math.min(12, stair.width * 0.12)}px ${CONFIG.FONT_FAMILY}`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('UP', midX, stair.length * 0.55);
 
-    ctx.strokeStyle = '#5a5550'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = TEXT; ctx.lineWidth = 1.5;
     ctx.strokeRect(0, 0, stair.width, stair.length);
     ctx.restore();
   }
@@ -684,17 +723,17 @@ export class Renderer {
   // ── Labels ──────────────────────────────
   _drawLabel(ctx, label, isSelected, zoom) {
     ctx.save();
-    ctx.font = `500 ${label.fontSize}px "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `500 ${label.fontSize}px ${CONFIG.FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#5a5550';
+    ctx.fillStyle = TEXT;
     ctx.fillText(label.text, label.x, label.y);
 
     if (isSelected) {
       const metrics = ctx.measureText(label.text);
       const w = metrics.width;
       const h = label.fontSize * 1.2;
-      ctx.strokeStyle = '#7b96aa';
+      ctx.strokeStyle = SELECTION;
       ctx.lineWidth = 1.5 / zoom;
       ctx.setLineDash([4 / zoom, 3 / zoom]);
       ctx.strokeRect(label.x - w / 2 - 4 / zoom, label.y - h / 2 - 2 / zoom, w + 8 / zoom, h + 4 / zoom);
@@ -705,10 +744,10 @@ export class Renderer {
 
   drawLabelExport(ctx, label) {
     ctx.save();
-    ctx.font = `500 ${label.fontSize}px "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `500 ${label.fontSize}px ${CONFIG.FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#5a5550';
+    ctx.fillStyle = TEXT;
     ctx.fillText(label.text, label.x, label.y);
     ctx.restore();
   }
@@ -720,7 +759,7 @@ export class Renderer {
     const thickness = (CONFIG.WIRE_THICKNESS[wire.gauge] || 2) / zoom;
 
     ctx.save();
-    ctx.strokeStyle = isSelected ? '#7b96aa' : color;
+    ctx.strokeStyle = isSelected ? SELECTION : color;
     ctx.lineWidth = thickness;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -735,7 +774,7 @@ export class Renderer {
     for (const p of wire.points) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 3 / zoom, 0, Math.PI * 2);
-      ctx.fillStyle = isSelected ? '#7b96aa' : color;
+      ctx.fillStyle = isSelected ? SELECTION : color;
       ctx.fill();
     }
 
@@ -747,22 +786,15 @@ export class Renderer {
       const mx = (p0.x + p1.x) / 2;
       const my = (p0.y + p1.y) / 2;
       const fontSize = Math.max(8, 10 / zoom);
-      ctx.font = `600 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const text = `${wire.gauge}mm\u00B2`;
-      const metrics = ctx.measureText(text);
-      const pad = 2 / zoom;
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(mx - metrics.width / 2 - pad, my - fontSize / 2 - pad, metrics.width + pad * 2, fontSize + pad * 2);
-      ctx.fillStyle = isSelected ? '#7b96aa' : '#c87a10';
-      ctx.fillText(text, mx, my);
+      this._drawTextWithBg(ctx, `${wire.gauge}mm\u00B2`, mx, my, {
+        fontSize, zoom, textColor: isSelected ? SELECTION : CONFIG.COLORS.ELEC_LABEL,
+      });
     }
 
     // Selection highlight
     if (isSelected) {
       ctx.setLineDash([4 / zoom, 3 / zoom]);
-      ctx.strokeStyle = '#7b96aa';
+      ctx.strokeStyle = SELECTION;
       ctx.lineWidth = 1 / zoom;
       ctx.beginPath();
       ctx.moveTo(wire.points[0].x, wire.points[0].y);
@@ -806,15 +838,9 @@ export class Renderer {
       const p1 = wire.points[mid];
       const mx = (p0.x + p1.x) / 2;
       const my = (p0.y + p1.y) / 2;
-      ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const text = `${wire.gauge}mm\u00B2`;
-      const metrics = ctx.measureText(text);
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(mx - metrics.width / 2 - 2, my - 7, metrics.width + 4, 14);
-      ctx.fillStyle = '#c87a10';
-      ctx.fillText(text, mx, my);
+      this._drawTextWithBg(ctx, `${wire.gauge}mm\u00B2`, mx, my, {
+        fontSize: 10, textColor: CONFIG.COLORS.ELEC_LABEL,
+      });
     }
 
     ctx.restore();
@@ -861,7 +887,7 @@ export class Renderer {
       : danger
         ? 'rgba(207,77,58,0.09)'
         : 'rgba(245,166,35,0.08)';
-    ctx.strokeStyle = isSelected ? '#7b96aa' : (danger ? '#cf4d3a' : '#b27b12');
+    ctx.strokeStyle = isSelected ? SELECTION : (danger ? '#cf4d3a' : CONFIG.COLORS.WIRE_LABEL);
     ctx.lineWidth = (isSelected ? 2 : 1.4) / zoom;
     ctx.fillRect(-w / 2, -h / 2, w, h);
     ctx.strokeRect(-w / 2, -h / 2, w, h);
@@ -871,12 +897,12 @@ export class Renderer {
     ctx.moveTo(-w / 2 + 6, -h / 2 + 18);
     ctx.lineTo(w / 2 - 6, -h / 2 + 18);
     ctx.stroke();
-    ctx.font = `${Math.max(9, 11 / zoom)}px "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `${Math.max(9, 11 / zoom)}px ${CONFIG.FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = isSelected ? '#6a8599' : (danger ? '#b33221' : '#9b6c10');
     ctx.fillText(panel.name, 0, 0);
-    ctx.font = `${Math.max(7, 9 / zoom)}px "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `${Math.max(7, 9 / zoom)}px ${CONFIG.FONT_FAMILY}`;
     ctx.fillText(`${status.totalLoadA.toFixed(1)}A`, 0, h / 2 + (8 / zoom));
     if (danger) {
       ctx.beginPath();
@@ -884,7 +910,7 @@ export class Renderer {
       ctx.fillStyle = '#cf4d3a';
       ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.font = `700 ${Math.max(7, 8 / zoom)}px "Segoe UI", system-ui, sans-serif`;
+      ctx.font = `700 ${Math.max(7, 8 / zoom)}px ${CONFIG.FONT_FAMILY}`;
       ctx.fillText('!', w / 2 - 6, -h / 2 + 6);
     }
     ctx.restore();
@@ -900,7 +926,7 @@ export class Renderer {
     ctx.rotate(sym.rotation * Math.PI / 180);
 
     const r = 10 / zoom;
-    const color = isSelected ? '#7b96aa' : CONFIG.WIRE_COLORS;
+    const color = isSelected ? SELECTION : CONFIG.WIRE_COLORS;
 
     this._drawElecSymbolShape(ctx, sym.symbolType, r, color, zoom);
 
@@ -909,7 +935,7 @@ export class Renderer {
     // Selection highlight
     if (isSelected) {
       ctx.save();
-      ctx.strokeStyle = '#7b96aa';
+      ctx.strokeStyle = SELECTION;
       ctx.lineWidth = 1 / zoom;
       ctx.setLineDash([4 / zoom, 3 / zoom]);
       ctx.beginPath();
@@ -1017,7 +1043,7 @@ export class Renderer {
         ctx.stroke();
         // "P" label
         const fs = r * 0.8;
-        ctx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
+        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('P', r * 1.7, -r * 0.3);
@@ -1062,7 +1088,7 @@ export class Renderer {
         const bh = r * 1.4;
         ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
         const fs = r * 0.8;
-        ctx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
+        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('QD', 0, 0);
@@ -1077,20 +1103,10 @@ export class Renderer {
     const circLabel = circuit ? circuit.name : 'NC';
     const amp = Number(sym.amperageA) || 0;
     const text = `${circLabel} ${amp.toFixed(1)}A`;
-    const fs = Math.max(8, 10 / zoom);
-    ctx.font = `600 ${fs}px "Segoe UI", system-ui, sans-serif`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const x = sym.x + 12 / zoom;
-    const y = sym.y + 10 / zoom;
-    const m = ctx.measureText(text);
-    const pad = 2 / zoom;
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillRect(x - pad, y - pad, m.width + pad * 2, fs + pad * 2);
-    ctx.fillStyle = isSelected ? '#7b96aa' : '#b27b12';
-    ctx.fillText(text, x, y);
-    ctx.restore();
+    this._drawTextWithBg(ctx, text, sym.x + 12 / zoom, sym.y + 10 / zoom, {
+      fontSize: Math.max(8, 10 / zoom), zoom, align: 'left', baseline: 'top',
+      textColor: isSelected ? SELECTION : CONFIG.COLORS.WIRE_LABEL,
+    });
   }
 
   drawElectricalSymbolExport(ctx, sym) {
@@ -1099,24 +1115,15 @@ export class Renderer {
     ctx.rotate(sym.rotation * Math.PI / 180);
     this._drawElecSymbolShape(ctx, sym.symbolType, 10, CONFIG.WIRE_COLORS, 1);
     ctx.restore();
-    // Export fallback when no state context is available
-    const text = `${sym.amperageA || 0}A`;
-    ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const x = sym.x + 12;
-    const y = sym.y + 10;
-    const m = ctx.measureText(text);
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillRect(x - 2, y - 2, m.width + 4, 14);
-    ctx.fillStyle = '#b27b12';
-    ctx.fillText(text, x, y);
+    this._drawTextWithBg(ctx, `${sym.amperageA || 0}A`, sym.x + 12, sym.y + 10, {
+      fontSize: 10, align: 'left', baseline: 'top', textColor: CONFIG.COLORS.WIRE_LABEL,
+    });
   }
 
   // ── Pipes ─────────────────────────────────
   _drawPipe(ctx, pipe, isSelected, zoom) {
     if (pipe.points.length < 2) return;
-    const color = isSelected ? '#7b96aa' : (CONFIG.PIPE_COLORS[pipe.pipeType] || '#4a90d9');
+    const color = isSelected ? SELECTION : (CONFIG.PIPE_COLORS[pipe.pipeType] || '#4a90d9');
     const dash = CONFIG.PIPE_DASH[pipe.pipeType] || [];
     const thickness = (CONFIG.PIPE_THICKNESS || 2.5) / zoom;
 
@@ -1152,23 +1159,16 @@ export class Renderer {
       const p1 = pipe.points[mid];
       const mx = (p0.x + p1.x) / 2;
       const my = (p0.y + p1.y) / 2;
-      const fontSize = Math.max(8, 10 / zoom);
-      ctx.font = `600 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const text = `\u00D8${pipe.diameter}`;
-      const metrics = ctx.measureText(text);
-      const pad = 2 / zoom;
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(mx - metrics.width / 2 - pad, my - fontSize / 2 - pad, metrics.width + pad * 2, fontSize + pad * 2);
-      ctx.fillStyle = isSelected ? '#7b96aa' : (CONFIG.PIPE_COLORS[pipe.pipeType] || '#4a90d9');
-      ctx.fillText(text, mx, my);
+      this._drawTextWithBg(ctx, `\u00D8${pipe.diameter}`, mx, my, {
+        fontSize: Math.max(8, 10 / zoom), zoom,
+        textColor: isSelected ? SELECTION : (CONFIG.PIPE_COLORS[pipe.pipeType] || '#4a90d9'),
+      });
     }
 
     // Selection highlight
     if (isSelected) {
       ctx.setLineDash([4 / zoom, 3 / zoom]);
-      ctx.strokeStyle = '#7b96aa';
+      ctx.strokeStyle = SELECTION;
       ctx.lineWidth = 1 / zoom;
       ctx.beginPath();
       ctx.moveTo(pipe.points[0].x, pipe.points[0].y);
@@ -1262,15 +1262,9 @@ export class Renderer {
       const p1 = pipe.points[mid];
       const mx = (p0.x + p1.x) / 2;
       const my = (p0.y + p1.y) / 2;
-      ctx.font = '600 10px "Segoe UI", system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const text = `\u00D8${pipe.diameter}`;
-      const metrics = ctx.measureText(text);
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(mx - metrics.width / 2 - 2, my - 7, metrics.width + 4, 14);
-      ctx.fillStyle = color;
-      ctx.fillText(text, mx, my);
+      this._drawTextWithBg(ctx, `\u00D8${pipe.diameter}`, mx, my, {
+        fontSize: 10, textColor: color,
+      });
     }
 
     this._drawPipeFlowArrows(ctx, pipe, 1, color);
@@ -1285,7 +1279,7 @@ export class Renderer {
     ctx.rotate(sym.rotation * Math.PI / 180);
 
     const r = 10 / zoom;
-    const color = isSelected ? '#7b96aa' : CONFIG.LAYER_COLORS.plumbing;
+    const color = isSelected ? SELECTION : CONFIG.LAYER_COLORS.plumbing;
 
     this._drawPlumbSymbolShape(ctx, sym.symbolType, r, color, zoom);
 
@@ -1294,7 +1288,7 @@ export class Renderer {
     // Selection highlight
     if (isSelected) {
       ctx.save();
-      ctx.strokeStyle = '#7b96aa';
+      ctx.strokeStyle = SELECTION;
       ctx.lineWidth = 1 / zoom;
       ctx.setLineDash([4 / zoom, 3 / zoom]);
       ctx.beginPath();
@@ -1353,7 +1347,7 @@ export class Renderer {
         const bh = r * 1.4;
         ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
         const fs = r * 0.7;
-        ctx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
+        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('CX', 0, 0);
@@ -1365,7 +1359,7 @@ export class Renderer {
         ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.stroke();
         const fs = r * 0.9;
-        ctx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
+        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('M', 0, 0);
@@ -1395,7 +1389,7 @@ export class Renderer {
         ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.stroke();
         const fs = r * 0.7;
-        ctx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
+        ctx.font = `700 ${fs}px ${CONFIG.FONT_FAMILY}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('MO', 0, 0);
@@ -1432,7 +1426,7 @@ export class Renderer {
     ctx.translate(item.x, item.y);
     ctx.rotate(item.rotation * Math.PI / 180);
 
-    this._drawFurnitureShape(ctx, item.furnitureType, w, d, color, zoom, catalog.topLabel || catalog.label);
+    drawFurnitureShape(ctx, item.furnitureType, w, d, color, zoom, catalog.topLabel || catalog.label);
 
     ctx.restore();
 
@@ -1441,593 +1435,15 @@ export class Renderer {
       ctx.save();
       ctx.translate(item.x, item.y);
       ctx.rotate(item.rotation * Math.PI / 180);
-      ctx.strokeStyle = '#7b96aa';
-      ctx.lineWidth = 1.5 / zoom;
-      ctx.setLineDash([5 / zoom, 3 / zoom]);
+      this._drawSelectionDash(ctx, zoom);
       const margin = 4 / zoom;
       ctx.strokeRect(-w / 2 - margin, -d / 2 - margin, w + margin * 2, d + margin * 2);
-      ctx.setLineDash([]);
+      this._endDash(ctx);
       ctx.restore();
     }
   }
 
-  _toRgb(color) {
-    if (typeof color !== 'string' || !color.startsWith('#')) return null;
-    const raw = color.slice(1);
-    const normalized = raw.length === 3
-      ? raw.split('').map(v => v + v).join('')
-      : raw;
 
-    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return null;
-    const num = parseInt(normalized, 16);
-
-    return {
-      r: (num >> 16) & 255,
-      g: (num >> 8) & 255,
-      b: num & 255,
-    };
-  }
-
-  _isColorDark(color) {
-    const rgb = this._toRgb(color);
-    if (!rgb) return false;
-    const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
-    return luminance < 125;
-  }
-
-  _withAlpha(color, alpha) {
-    const rgb = this._toRgb(color);
-    if (!rgb) return color;
-    const raw = Number(alpha);
-    const safeAlpha = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
-    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${safeAlpha})`;
-  }
-
-  _drawRoundedRect(ctx, x, y, w, h, radius) {
-    const r = Math.max(0, Math.min(radius, w / 2, h / 2));
-    ctx.beginPath();
-    if (r === 0) {
-      ctx.rect(x, y, w, h);
-      return;
-    }
-
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
-    ctx.closePath();
-  }
-
-  _drawFurnitureTopTexture(ctx, w, d, radius, color, zoom, opts = {}) {
-    const hw = w / 2;
-    const hd = d / 2;
-    const minDim = Math.min(w, d);
-    const baseAlpha = opts.baseAlpha ?? 0.11;
-    const lineAlpha = opts.lineAlpha ?? 0.09;
-    const spacing = Math.max(5 / zoom, minDim * (opts.spacing ?? 0.1));
-    const angle = opts.angle ?? (Math.PI / 4);
-    const cross = Boolean(opts.cross);
-
-    const lines = this._withAlpha(color, lineAlpha);
-    const linesStrong = this._withAlpha(color, Math.min(1, lineAlpha + 0.05));
-
-    ctx.save();
-    this._drawRoundedRect(ctx, -hw, -hd, w, d, radius);
-    ctx.clip();
-
-    const grad = ctx.createLinearGradient(-hw, -hd, hw, hd);
-    grad.addColorStop(0, this._withAlpha(color, baseAlpha + 0.02));
-    grad.addColorStop(0.45, this._withAlpha(color, 0.02));
-    grad.addColorStop(1, this._withAlpha(color, baseAlpha + 0.02));
-    ctx.fillStyle = grad;
-    ctx.fillRect(-hw, -hd, w, d);
-
-    ctx.save();
-    ctx.translate(0, 0);
-    ctx.rotate(angle);
-    ctx.strokeStyle = lines;
-    ctx.lineWidth = Math.max(0.8 / zoom, spacing * 0.09);
-    const span = Math.max(w, d) * 1.2;
-
-    for (let i = -span; i <= span; i += spacing) {
-      ctx.beginPath();
-      ctx.moveTo(-span, i);
-      ctx.lineTo(span, i);
-      ctx.stroke();
-    }
-
-    if (cross) {
-      ctx.rotate(-Math.PI / 3);
-      ctx.strokeStyle = linesStrong;
-      for (let i = -span; i <= span; i += spacing * 1.25) {
-        ctx.beginPath();
-        ctx.moveTo(-span, i);
-        ctx.lineTo(span, i);
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
-
-    ctx.restore();
-  }
-
-  _drawFurnitureTopLabel(ctx, text, w, d, color, zoom) {
-    const raw = (text || '').toString().trim();
-    if (!raw) return;
-
-    const label = raw.slice(0, 4).toUpperCase();
-    const fontSize = Math.max(6, Math.min(10, Math.min(w, d) * 0.12)) / zoom;
-
-    ctx.save();
-    ctx.font = `600 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const metrics = ctx.measureText(label);
-    const padX = 3 / zoom;
-    const padY = 2 / zoom;
-    const width = Math.max(fontSize * 1.8, metrics.width + padX * 2);
-    const height = fontSize + padY * 2;
-    const y = (d / 2) - height - (1 / zoom);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-    ctx.lineWidth = 0.8 / zoom;
-    ctx.beginPath();
-    this._drawRoundedRect(ctx, -width / 2, y, width, height, Math.min(4 / zoom, height / 2));
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = this._isColorDark(color) ? '#f6f7f8' : '#272727';
-    ctx.fillText(label, 0, y + height / 2);
-    ctx.restore();
-  }
-
-  _drawFurnitureShape(ctx, type, w, d, color, zoom, label) {
-    const lw = 1.5 / zoom;
-    const hw = w / 2;
-    const hd = d / 2;
-    const inset = Math.min(w, d) * 0.06;
-    const minSide = Math.min(w, d);
-    const soft = this._withAlpha(color, 0.16);
-    const strokeColor = this._withAlpha(color, 0.88);
-    const arcR = Math.min(hw, hd) * 0.12;
-    const texture = {
-      spacing: 0.1,
-      angle: Math.PI / 4,
-      baseAlpha: 0.08,
-      lineAlpha: 0.08,
-      cross: false,
-    };
-
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = lw;
-    ctx.fillStyle = this._withAlpha(color, 0.12);
-
-    switch (type) {
-      case 'sofa_2seat':
-      case 'sofa_3seat': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        const seats = type === 'sofa_3seat' ? 3 : 2;
-        const seatW = w / seats;
-        ctx.fillStyle = soft;
-        for (let i = 0; i < seats; i++) {
-          const cx = -hw + seatW * (i + 0.5);
-          const sw = seatW * 0.92;
-          const sh = d * 0.74;
-          const sx = cx - sw / 2;
-          ctx.fillRect(sx, -sh / 2, sw, sh);
-        }
-        for (let i = 1; i < seats; i++) {
-          const x = -hw + (w / seats) * i;
-          ctx.beginPath();
-          ctx.moveTo(x, -hd + inset);
-          ctx.lineTo(x, hd - inset);
-          ctx.stroke();
-        }
-        ctx.beginPath();
-        ctx.moveTo(-hw + inset, -hd + inset / 2);
-        ctx.quadraticCurveTo(-hw, -hd, -hw + inset, -hd + inset * 1.5);
-        ctx.moveTo(hw - inset, -hd + inset / 2);
-        ctx.quadraticCurveTo(hw, -hd, hw - inset, -hd + inset * 1.5);
-        ctx.stroke();
-        texture.spacing = 0.09;
-        texture.cross = true;
-        texture.baseAlpha = 0.06;
-        break;
-      }
-      case 'armchair': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR * 0.8);
-        ctx.fill();
-        ctx.stroke();
-        this._drawRoundedRect(ctx, -hw + inset, -hd + inset, w - inset * 2, d - inset * 2, arcR * 0.7);
-        ctx.fillStyle = soft;
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(-hw + inset, -hd + inset);
-        ctx.quadraticCurveTo(-hw, 0, -hw + inset, hd - inset);
-        ctx.moveTo(hw - inset, -hd + inset);
-        ctx.quadraticCurveTo(hw, 0, hw - inset, hd - inset);
-        ctx.stroke();
-        texture.cross = false;
-        texture.baseAlpha = 0.06;
-        break;
-      }
-      case 'coffee_table': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = soft;
-        ctx.beginPath();
-        ctx.arc(0, 0, Math.min(hw, hd) * 0.85, 0, Math.PI * 2);
-        ctx.fill();
-        texture.cross = true;
-        texture.baseAlpha = 0.07;
-        break;
-      }
-      case 'tv_console': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        const margin = w * 0.05;
-        const panelW = w - margin * 2;
-        const panelH = d * 0.35;
-        const px = -hw + margin;
-        const py = -hd + d * 0.1;
-        this._drawRoundedRect(ctx, px, py, panelW, panelH, arcR * 0.5);
-        ctx.stroke();
-        this._drawRoundedRect(ctx, px + margin * 0.5, py + panelH * 0.45, panelW - margin, panelH * 0.35, Math.max(2 / zoom, arcR * 0.3));
-        texture.cross = true;
-        texture.baseAlpha = 0.06;
-        break;
-      }
-      case 'dining_table': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        const legInset = Math.max(6 / zoom, inset * 0.55);
-        const legSize = Math.max(3 / zoom, inset * 0.3);
-        const corners = [[-hw + legInset, -hd + legInset], [hw - legInset, -hd + legInset],
-                         [-hw + legInset, hd - legInset], [hw - legInset, hd - legInset]];
-        for (const [cx, cy] of corners) {
-          ctx.fillStyle = color;
-          ctx.fillRect(cx - legSize / 2, cy - legSize / 2, legSize, legSize);
-        }
-        texture.cross = false;
-        texture.spacing = 0.2;
-        break;
-      }
-      case 'round_table': {
-        const radius = Math.min(hw, hd);
-        ctx.beginPath();
-        ctx.arc(0, 0, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.strokeStyle = this._withAlpha(color, 0.5);
-        for (let i = 0; i < 6; i++) {
-          const a = (i / 6) * Math.PI * 2;
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(Math.cos(a) * radius * 0.8, Math.sin(a) * radius * 0.8);
-          ctx.stroke();
-        }
-        ctx.strokeStyle = strokeColor;
-        texture.baseAlpha = 0.13;
-        texture.cross = false;
-        break;
-      }
-      case 'chair': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR * 0.9);
-        ctx.fill();
-        ctx.stroke();
-        const r = Math.min(hw, hd) * 0.55;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.stroke();
-        texture.cross = false;
-        texture.spacing = 0.2;
-        break;
-      }
-      case 'bed_single':
-      case 'bed_double':
-      case 'bed_queen': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        const pillowH = d * 0.1;
-        const pillowMargin = w * 0.08;
-        ctx.fillStyle = this._withAlpha(color, 0.17);
-        if (type === 'bed_single') {
-          ctx.fillRect(-hw + pillowMargin, -hd + d * 0.03, w - pillowMargin * 2, pillowH);
-        } else {
-          const pillowW = (w - pillowMargin * 3) / 2;
-          ctx.fillRect(-hw + pillowMargin, -hd + d * 0.03, pillowW, pillowH);
-          ctx.fillRect(-pillowMargin / 2, -hd + d * 0.03, pillowW, pillowH);
-        }
-
-        ctx.lineWidth = 3 / zoom;
-        ctx.beginPath();
-        ctx.moveTo(-hw, -hd);
-        ctx.lineTo(hw, -hd);
-        ctx.stroke();
-        ctx.lineWidth = lw;
-
-        ctx.setLineDash([4 / zoom, 4 / zoom]);
-        ctx.beginPath();
-        ctx.moveTo(-hw, hd - hd * 0.22);
-        ctx.lineTo(hw, hd - hd * 0.22);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        texture.baseAlpha = 0.09;
-        texture.lineAlpha = 0.06;
-        texture.cross = true;
-        break;
-      }
-      case 'wardrobe': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        const innerInset = inset * 0.8;
-        const innerW = w - innerInset * 2;
-        const innerH = d - innerInset * 2;
-        const innerX = -hw + innerInset;
-        const innerY = -hd + innerInset;
-        this._drawRoundedRect(ctx, innerX, innerY, innerW, innerH, arcR * 0.5);
-        ctx.strokeStyle = this._withAlpha(color, 0.38);
-        ctx.stroke();
-        ctx.strokeStyle = strokeColor;
-
-        ctx.beginPath();
-        ctx.moveTo(0, -hd + inset * 0.4);
-        ctx.lineTo(0, hd - inset * 0.4);
-        ctx.setLineDash([3 / zoom, 3 / zoom]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        const shelfY = -hd + innerH * 0.36;
-        ctx.beginPath();
-        ctx.moveTo(innerX, shelfY);
-        ctx.lineTo(innerX + innerW, shelfY);
-        ctx.strokeStyle = this._withAlpha(color, 0.55);
-        ctx.stroke();
-        ctx.strokeStyle = strokeColor;
-
-        const knob = Math.max(1.6 / zoom, inset * 0.15);
-        ctx.beginPath();
-        ctx.arc(-hw + inset * 1.2, 0, knob, 0, Math.PI * 2);
-        ctx.arc(hw - inset * 1.2, 0, knob, 0, Math.PI * 2);
-        ctx.fill();
-        texture.baseAlpha = 0.06;
-        texture.cross = false;
-        texture.angle = Math.PI / 6;
-        break;
-      }
-      case 'nightstand': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(-hw, 0);
-        ctx.lineTo(hw, 0);
-        ctx.setLineDash([2 / zoom, 2 / zoom]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        const handleW = w * 0.3;
-        ctx.beginPath();
-        ctx.moveTo(-handleW / 2, 0);
-        ctx.lineTo(handleW / 2, 0);
-        ctx.lineWidth = 2 / zoom;
-        ctx.stroke();
-        ctx.lineWidth = lw;
-        texture.cross = false;
-        texture.spacing = 0.18;
-        break;
-      }
-      case 'kitchen_sink': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.ellipse(0, 0, hw * 0.62, hd * 0.54, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.ellipse(0, 0, hw * 0.55, hd * 0.45, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = this._withAlpha(color, 0.5);
-        ctx.stroke();
-        ctx.strokeStyle = strokeColor;
-
-        ctx.beginPath();
-        ctx.arc(0, -hd * 0.7, 2.8 / zoom, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-        texture.cross = false;
-        texture.baseAlpha = 0.06;
-        break;
-      }
-      case 'stove': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        const bRadius = Math.min(hw, hd) * 0.22;
-        const bx = hw * 0.4;
-        const by = hd * 0.4;
-        for (const [cx, cy] of [[-bx, -by], [bx, -by], [-bx, by], [bx, by]]) {
-          ctx.beginPath();
-          ctx.arc(cx, cy, bRadius, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(cx - bRadius * 0.6, cy);
-          ctx.lineTo(cx + bRadius * 0.6, cy);
-          ctx.moveTo(cx, cy - bRadius * 0.6);
-          ctx.lineTo(cx, cy + bRadius * 0.6);
-          ctx.stroke();
-        }
-        break;
-      }
-      case 'fridge': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        const splitY = -hd + d * 0.35;
-        ctx.beginPath();
-        ctx.moveTo(-hw, splitY);
-        ctx.lineTo(hw, splitY);
-        ctx.stroke();
-
-        const compW = w - inset * 1.5;
-        const topH = d * 0.11;
-        const botH = d * 0.46;
-        ctx.fillStyle = soft;
-        ctx.fillRect(-hw + inset * 0.75, -hd + d * 0.11, compW, topH);
-        ctx.fillRect(-hw + inset * 0.75, splitY + d * 0.06, compW, botH);
-
-        const hx = hw - inset * 1.1;
-        ctx.beginPath();
-        ctx.moveTo(hx, splitY - d * 0.1);
-        ctx.lineTo(hx, splitY - d * 0.02);
-        ctx.moveTo(hx, splitY + d * 0.1);
-        ctx.lineTo(hx, splitY + d * 0.2);
-        ctx.lineWidth = 2 / zoom;
-        ctx.stroke();
-        ctx.lineWidth = lw;
-        break;
-      }
-      case 'toilet': {
-        const tankH = d * 0.3;
-        this._drawRoundedRect(ctx, -hw, -hd, w, tankH, arcR * 0.8);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.ellipse(0, hd * 0.12, Math.min(hw, hd) * 0.65, hd * 0.65, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        break;
-      }
-      case 'bath_sink': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(0, 0, Math.min(hw, hd) * 0.65, 0, Math.PI);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, -hd * 0.6, 2.4 / zoom, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-        break;
-      }
-      case 'bathtub': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR * 1.4);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.ellipse(0, 0, hw * 0.88, hd * 0.67, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.ellipse(0, 0, hw * 0.62, hd * 0.48, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = this._withAlpha(color, 0.5);
-        ctx.stroke();
-        ctx.strokeStyle = strokeColor;
-        texture.cross = true;
-        break;
-      }
-      case 'shower': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(0, 0, Math.min(hw, hd) * 0.15, 0, Math.PI * 2);
-        ctx.stroke();
-
-        const step = w * 0.25;
-        for (let i = -1; i <= 1; i++) {
-          ctx.beginPath();
-          ctx.moveTo(i * step - 4 / zoom, -6 / zoom);
-          ctx.quadraticCurveTo(i * step, -2 / zoom, i * step + 4 / zoom, 4 / zoom);
-          ctx.stroke();
-        }
-        texture.cross = false;
-        texture.spacing = 0.18;
-        break;
-      }
-      case 'desk': {
-        this._drawRoundedRect(ctx, -hw, -hd, w, d, arcR);
-        ctx.fill();
-        ctx.stroke();
-
-        const drawerW = w * 0.35;
-        this._drawRoundedRect(ctx, hw - drawerW, -hd, drawerW, d, arcR * 0.6);
-        ctx.stroke();
-        for (let i = 0; i < 2; i++) {
-          const y = -hd + d * (0.3 + i * 0.4);
-          ctx.beginPath();
-          ctx.moveTo(hw - drawerW * 0.3, y);
-          ctx.lineTo(hw - drawerW * 0.7, y);
-          ctx.stroke();
-        }
-        texture.cross = true;
-        break;
-      }
-      case 'office_chair': {
-        const radius = Math.min(hw, hd);
-        ctx.beginPath();
-        ctx.arc(0, 0, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(0, 0, radius * 0.62, 0, Math.PI * 2);
-        ctx.strokeStyle = this._withAlpha(color, 0.75);
-        ctx.stroke();
-        ctx.strokeStyle = strokeColor;
-        ctx.beginPath();
-        ctx.moveTo(-radius * 0.45, -radius * 0.35);
-        ctx.quadraticCurveTo(0, radius * -0.68, radius * 0.45, -radius * 0.35);
-        ctx.stroke();
-        texture.cross = false;
-        break;
-      }
-      default: {
-        ctx.fillRect(-hw, -hd, w, d);
-        ctx.strokeRect(-hw, -hd, w, d);
-        break;
-      }
-    }
-
-    if (minSide >= 55) {
-      this._drawFurnitureTopTexture(ctx, w, d, arcR, color, zoom, texture);
-    } else if (minSide >= 40 && texture.cross === false && texture.baseAlpha < 0.1) {
-      this._drawFurnitureTopTexture(ctx, w, d, arcR * 0.7, color, zoom, {
-        ...texture,
-        cross: false,
-        baseAlpha: Math.max(0.03, texture.baseAlpha),
-        spacing: Math.max(texture.spacing, 0.2),
-        lineAlpha: Math.max(0.03, texture.lineAlpha),
-      });
-    }
-
-    this._drawFurnitureTopLabel(ctx, label, w, d, color, zoom);
-  }
 
 
   drawFurnitureExport(ctx, item) {
@@ -2037,7 +1453,7 @@ export class Renderer {
     ctx.translate(item.x, item.y);
     ctx.rotate(item.rotation * Math.PI / 180);
     const color = catalog.color || CONFIG.LAYER_COLORS.furniture;
-    this._drawFurnitureShape(ctx, item.furnitureType, catalog.w, catalog.d, color, 1, catalog.topLabel || catalog.label);
+    drawFurnitureShape(ctx, item.furnitureType, catalog.w, catalog.d, color, 1, catalog.topLabel || catalog.label);
     ctx.restore();
   }
 
@@ -2172,16 +1588,12 @@ export class Renderer {
     ctx.rotate(textAngle);
 
     const fontSize = Math.max(9, 11 / zoom);
-    ctx.font = `600 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const metrics = ctx.measureText(text);
     const pad = 3 / zoom;
+    this._drawTextWithBg(ctx, text, 0, 0, { fontSize, zoom, pad, bgColor: 'rgba(255,255,255,0.9)' });
 
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.fillRect(-metrics.width / 2 - pad, -fontSize / 2 - pad, metrics.width + pad * 2, fontSize + pad * 2);
-    ctx.fillStyle = '#5a5550';
-    ctx.fillText(text, 0, 0);
-
+    // Dimension lines — need text width for gap
+    ctx.font = `600 ${fontSize}px ${CONFIG.FONT_FAMILY}`;
+    const tw = ctx.measureText(text).width;
     const halfLen = length / 2;
     ctx.strokeStyle = '#b0aca5'; ctx.lineWidth = 0.8 / zoom;
     ctx.beginPath();
@@ -2189,8 +1601,8 @@ export class Renderer {
     ctx.moveTo(halfLen, -3 / zoom); ctx.lineTo(halfLen, 3 / zoom);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(-halfLen, 0); ctx.lineTo(-metrics.width / 2 - pad - 2 / zoom, 0);
-    ctx.moveTo(metrics.width / 2 + pad + 2 / zoom, 0); ctx.lineTo(halfLen, 0);
+    ctx.moveTo(-halfLen, 0); ctx.lineTo(-tw / 2 - pad - 2 / zoom, 0);
+    ctx.moveTo(tw / 2 + pad + 2 / zoom, 0); ctx.lineTo(halfLen, 0);
     ctx.stroke();
     ctx.restore();
   }
@@ -2213,7 +1625,7 @@ export class Renderer {
     ctx.fillStyle = Materials.getWall(state.wallMaterial, ctx) || '#95a5a6';
     ctx.fill();
     ctx.globalAlpha = 0.8;
-    ctx.strokeStyle = '#7b96aa'; ctx.lineWidth = 1.5 / state.zoom;
+    ctx.strokeStyle = SELECTION; ctx.lineWidth = 1.5 / state.zoom;
     ctx.setLineDash([6 / state.zoom, 4 / state.zoom]); ctx.stroke(); ctx.setLineDash([]);
 
     ctx.globalAlpha = 0.9;
@@ -2226,20 +1638,15 @@ export class Renderer {
     if (textAngle > Math.PI / 2) textAngle -= Math.PI;
     if (textAngle < -Math.PI / 2) textAngle += Math.PI;
     ctx.rotate(textAngle);
-    const fontSize = Math.max(10, 12 / state.zoom);
-    ctx.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const text = Geom.formatLength(length);
-    const metrics = ctx.measureText(text);
-    const pad = 4 / state.zoom;
-    ctx.fillStyle = 'rgba(123,150,170,0.12)';
-    ctx.fillRect(-metrics.width / 2 - pad, -fontSize / 2 - pad, metrics.width + pad * 2, fontSize + pad * 2);
-    ctx.fillStyle = '#6a8599';
-    ctx.fillText(text, 0, 0);
+    this._drawTextWithBg(ctx, Geom.formatLength(length), 0, 0, {
+      fontSize: Math.max(10, 12 / state.zoom), zoom: state.zoom,
+      pad: 4 / state.zoom, fontWeight: '700',
+      bgColor: 'rgba(123,150,170,0.12)', textColor: '#6a8599',
+    });
     ctx.restore();
 
     ctx.beginPath(); ctx.arc(x1, y1, 4 / state.zoom, 0, Math.PI * 2);
-    ctx.fillStyle = '#7b96aa'; ctx.fill();
+    ctx.fillStyle = SELECTION; ctx.fill();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 / state.zoom; ctx.stroke();
   }
 
@@ -2288,7 +1695,7 @@ export class Renderer {
     ctx.setLineDash([]);
 
     const fontSize = Math.max(10, 12 / zoom);
-    ctx.font = `500 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+    ctx.font = `500 ${fontSize}px ${CONFIG.FONT_FAMILY}`;
     ctx.fillStyle = '#b0aca5';
 
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -2313,7 +1720,7 @@ export class Renderer {
     ctx.save();
     ctx.fillStyle = '#b0aca5';
     ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.font = '10px "Segoe UI", system-ui, sans-serif';
+    ctx.font = `10px ${CONFIG.FONT_FAMILY}`;
     ctx.fillText('0,0', sx + 6, sy + 4);
     ctx.restore();
   }

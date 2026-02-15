@@ -1,5 +1,3 @@
-import { Geom } from './geometry.js';
-
 let nextId = 1;
 
 export class Stair {

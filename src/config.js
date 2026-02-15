@@ -1,4 +1,12 @@
 export const CONFIG = {
+  FONT_FAMILY: '"Segoe UI", system-ui, sans-serif',
+  COLORS: {
+    SELECTION: '#7b96aa',
+    TEXT: '#5a5550',
+    DIM_LINE: '#b0aca5',
+    WIRE_LABEL: '#c87a10',
+    ELEC_LABEL: '#b27b12',
+  },
   SCALE: 1,
   DEFAULT_GRID: 10,
   MAJOR_GRID_MULT: 5,

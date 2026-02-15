@@ -1,4 +1,3 @@
-import { Geom } from './geometry.js';
 import { CONFIG } from './config.js';
 
 export class BomCalculator {
