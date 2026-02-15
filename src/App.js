@@ -584,10 +584,15 @@ export class App {
       this.canvas.addEventListener('pointercancel', this._onPointerCancelBound);
       this.canvas.addEventListener('pointerleave', this._onPointerCancelBound);
       this.canvas.addEventListener('pointerout', this._onPointerCancelBound);
+      window.addEventListener('pointermove', this._onPointerMoveBound, { passive: false });
+      window.addEventListener('pointerup', this._onPointerUpBound, { passive: false });
+      window.addEventListener('pointercancel', this._onPointerCancelBound);
     } else {
       this.canvas.addEventListener('mousedown', this._onMouseDownBound);
       this.canvas.addEventListener('mousemove', this._onMouseMoveBound);
       this.canvas.addEventListener('mouseup', this._onMouseUpBound);
+      window.addEventListener('mousemove', this._onMouseMoveBound);
+      window.addEventListener('mouseup', this._onMouseUpBound);
     }
     this.canvas.addEventListener('wheel', this._onWheelBound, { passive: false });
     this.canvas.addEventListener('contextmenu', this._onContextMenuBound);
@@ -2994,10 +2999,15 @@ export class App {
       this.canvas.removeEventListener('pointercancel', this._onPointerCancelBound);
       this.canvas.removeEventListener('pointerleave', this._onPointerCancelBound);
       this.canvas.removeEventListener('pointerout', this._onPointerCancelBound);
+      window.removeEventListener('pointermove', this._onPointerMoveBound);
+      window.removeEventListener('pointerup', this._onPointerUpBound);
+      window.removeEventListener('pointercancel', this._onPointerCancelBound);
     } else {
       this.canvas.removeEventListener('mousedown', this._onMouseDownBound);
       this.canvas.removeEventListener('mousemove', this._onMouseMoveBound);
       this.canvas.removeEventListener('mouseup', this._onMouseUpBound);
+      window.removeEventListener('mousemove', this._onMouseMoveBound);
+      window.removeEventListener('mouseup', this._onMouseUpBound);
     }
     this.canvas.removeEventListener('wheel', this._onWheelBound, { passive: false });
     this.canvas.removeEventListener('contextmenu', this._onContextMenuBound);

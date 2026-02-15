@@ -19,6 +19,7 @@
   --toolbar-h: 44px;
   --statusbar-h: 28px;
   --panel-w: 200px;
+  --touch-target: 44px;
 
   display: flex;
   flex-direction: column;
@@ -74,6 +75,13 @@
 .top-tab.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+}
+
+/* Improve tap behavior on touch devices */
+button,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ── Creative Sub-toolbar ────────────────── */
@@ -934,6 +942,7 @@ main {
     --panel-w: 100%;
     --toolbar-h: 48px;
     --statusbar-h: 30px;
+    --touch-target: 44px;
   }
 
   #creative-toolbar,
@@ -941,6 +950,14 @@ main {
   #layer-bar {
     overflow-x: auto;
     white-space: nowrap;
+  }
+
+  #tab-bar,
+  #creative-toolbar,
+  #story-bar,
+  #layer-bar {
+    min-height: 44px;
+    padding-inline: 8px;
   }
 
   main {
@@ -964,7 +981,46 @@ main {
 
   #canvas-container {
     flex: 1 1 auto;
-    min-height: 240px;
+    min-height: 35vh;
+  }
+
+  #story-bar,
+  #layer-bar {
+    gap: 6px;
+  }
+
+  .top-tab,
+  .story-tab,
+  .layer-tab,
+  #creative-toolbar button,
+  #story-bar button,
+  .tool-btn,
+  .prop-btn,
+  .material-btn,
+  .proj-btn,
+  .costs-actions button,
+  .btn-delete-selected,
+  .cost-breakdown-toggle {
+    min-height: var(--touch-target);
+    min-width: var(--touch-target);
+    line-height: 1;
+  }
+
+  .tool-btn,
+  .prop-btn,
+  .material-btn,
+  #creative-toolbar button,
+  .cost-breakdown-toggle {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  #btn-add-story,
+  #btn-remove-story {
+    width: var(--touch-target);
+    height: var(--touch-target);
+    min-height: var(--touch-target);
+    min-width: var(--touch-target);
   }
 
   .tool-group,
@@ -973,9 +1029,22 @@ main {
     flex-wrap: wrap;
   }
 
-  .tool-btn,
-  .prop-btn {
-    min-width: 44px;
+  #creative-toolbar select,
+  #snap-angle-deg,
+  #grid-size,
+  #share-encrypt,
+  .selection-prop-select,
+  #elec-circuit-select,
+  #sel-elec-circuit-select,
+  .cost-price-input {
+    min-height: 40px;
+  }
+
+  #tab-bar-tabs,
+  #story-tabs,
+  #layer-tabs {
+    min-height: var(--touch-target);
+    align-items: center;
   }
 }
 
