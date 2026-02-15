@@ -87,13 +87,17 @@ export class Renderer {
       this._drawPreview(ctx, state);
     }
 
-    // Polyline preview (wire/pipe)
+    // Polyline preview (wire/pipe/floor-draw)
     if (state.polylinePoints && state.polylinePoints.length > 0 && state.mouseWorld) {
-      this._drawPolylinePreview(ctx, state);
+      if (state.activeTool === 'floor') {
+        this._drawFloorPolygonPreview(ctx, state);
+      } else {
+        this._drawPolylinePreview(ctx, state);
+      }
     }
 
     // Snap indicator
-    const snapTools = ['wall', 'stair', 'label', 'panel', 'wire', 'pipe', 'electrical_symbol', 'plumbing_symbol', 'furniture_item'];
+    const snapTools = ['wall', 'stair', 'label', 'panel', 'wire', 'pipe', 'electrical_symbol', 'plumbing_symbol', 'furniture_item', 'floor'];
     if (state.snapPoint && (snapTools.includes(state.activeTool) || state.isDrawing || state.polylinePoints.length > 0)) {
       this._drawSnap(ctx, state.snapPoint, state.zoom);
     }
@@ -2034,6 +2038,65 @@ export class Renderer {
     ctx.rotate(item.rotation * Math.PI / 180);
     const color = catalog.color || CONFIG.LAYER_COLORS.furniture;
     this._drawFurnitureShape(ctx, item.furnitureType, catalog.w, catalog.d, color, 1, catalog.topLabel || catalog.label);
+    ctx.restore();
+  }
+
+  // ── Floor Polygon Preview ──────────────────
+  _drawFloorPolygonPreview(ctx, state) {
+    const pts = state.polylinePoints;
+    if (!pts || pts.length === 0) return;
+
+    ctx.save();
+
+    // Fill preview
+    if (pts.length >= 2) {
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      if (state.mouseWorld) ctx.lineTo(state.mouseWorld.x, state.mouseWorld.y);
+      ctx.closePath();
+      ctx.fillStyle = '#d4a574';
+      ctx.fill();
+    }
+
+    // Outline
+    ctx.globalAlpha = 0.7;
+    ctx.strokeStyle = '#c8956c';
+    ctx.lineWidth = 2 / state.zoom;
+    ctx.setLineDash([6 / state.zoom, 4 / state.zoom]);
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    if (state.mouseWorld) ctx.lineTo(state.mouseWorld.x, state.mouseWorld.y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Vertex dots
+    ctx.globalAlpha = 0.9;
+    for (const p of pts) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4 / state.zoom, 0, Math.PI * 2);
+      ctx.fillStyle = '#c8956c';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5 / state.zoom;
+      ctx.stroke();
+    }
+
+    // Close indicator (highlight first point when mouse is near)
+    if (pts.length >= 3 && state.mouseWorld) {
+      const d = Geom.dist(state.mouseWorld.x, state.mouseWorld.y, pts[0].x, pts[0].y);
+      if (d < 10) {
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, 8 / state.zoom, 0, Math.PI * 2);
+        ctx.strokeStyle = '#c8956c';
+        ctx.lineWidth = 2.5 / state.zoom;
+        ctx.stroke();
+      }
+    }
+
     ctx.restore();
   }
 

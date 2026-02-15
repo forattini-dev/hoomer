@@ -109,7 +109,10 @@ export class App {
     this.furnitureType = 'chair';
     this.furnitureRotation = 0;
 
-    // Polyline drawing state (for wire/pipe)
+    // Floor draw mode
+    this.floorMode = 'auto'; // 'auto' | 'draw'
+
+    // Polyline drawing state (for wire/pipe/floor-draw)
     this.polylinePoints = [];
 
     // Terrain / Project
@@ -673,7 +676,11 @@ export class App {
         this._eraseAt(world.x, world.y);
         break;
       case 'floor':
-        this._addFloorAt(world.x, world.y);
+        if (this.floorMode === 'draw') {
+          this._addFloorPoint(snapped.x, snapped.y);
+        } else {
+          this._addFloorAt(world.x, world.y);
+        }
         break;
       case 'door':
         this._addDoorAt(world.x, world.y);
@@ -1121,6 +1128,11 @@ export class App {
   }
 
   _finishPolyline() {
+    if (this.activeTool === 'floor') {
+      this._finishFloorPolygon();
+      return;
+    }
+
     if (this.polylinePoints.length < 2) {
       this.polylinePoints = [];
       this._status('Need at least 2 points');
@@ -1574,6 +1586,34 @@ export class App {
     } else {
       this._status('Closed room not detected — close the walls');
     }
+    this._render();
+  }
+
+  _addFloorPoint(wx, wy) {
+    if (this.polylinePoints.length >= 3) {
+      const first = this.polylinePoints[0];
+      if (Geom.dist(wx, wy, first.x, first.y) < 10) {
+        this._finishFloorPolygon();
+        return;
+      }
+    }
+    this.polylinePoints.push({ x: wx, y: wy });
+    if (this.polylinePoints.length === 1) {
+      this._status('Click vertices, click first point or ESC to close');
+    }
+    this._render();
+  }
+
+  _finishFloorPolygon() {
+    if (this.polylinePoints.length < 3) {
+      this.polylinePoints = [];
+      this._status('Need at least 3 points');
+      return;
+    }
+    this._pushHistory();
+    this.floors.push(new Floor([...this.polylinePoints], this.floorMaterial));
+    this._status('Floor added');
+    this.polylinePoints = [];
     this._render();
   }
 
@@ -2068,6 +2108,15 @@ export class App {
     this._bindMaterialGroup('#wall-material-group .material-btn', btn => { this.wallMaterial = btn.dataset.material; });
     // Floor material
     this._bindMaterialGroup('#floor-material-group .material-btn', btn => { this.floorMaterial = btn.dataset.material; });
+    // Floor mode
+    this._bindBtnGroup('#floor-mode-group .prop-btn', btn => {
+      this.floorMode = btn.dataset.value;
+      if (this.activeTool === 'floor') {
+        this.polylinePoints = [];
+        this._status(this.floorMode === 'draw' ? 'Click to place polygon vertices' : 'Click inside a closed room');
+        this._render();
+      }
+    });
     // Door type
     this._bindBtnGroup('#door-type-group .prop-btn', btn => {
       this.doorType = btn.dataset.value;
@@ -2460,7 +2509,7 @@ export class App {
     this.activeTool = tool;
     this.isDrawing = false;
     this.drawStart = null;
-    if (tool !== 'wire' && tool !== 'pipe') this.polylinePoints = [];
+    if (tool !== 'wire' && tool !== 'pipe' && tool !== 'floor') this.polylinePoints = [];
     this._clearSelection();
     this.hoveredWall = null;
 
@@ -2500,7 +2549,7 @@ export class App {
       wall: 'Click to start a wall',
       select: 'Click to select',
       eraser: 'Click to erase',
-      floor: 'Click inside a closed room',
+      floor: this.floorMode === 'draw' ? 'Click to place polygon vertices' : 'Click inside a closed room',
       door: 'Click on a wall to place a door',
       window: 'Click on a wall to place a window',
       stair: 'Click to place a stair',

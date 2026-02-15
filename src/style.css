@@ -340,6 +340,16 @@ main {
   gap: 4px;
 }
 
+.tool-group-header {
+  display: none;
+}
+
+.tool-button-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .tool-btn {
   display: flex;
   align-items: center;
@@ -951,11 +961,11 @@ main {
   color: #8a3024;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1280px) {
   :host {
     --panel-w: 100%;
-    --toolbar-h: 48px;
-    --statusbar-h: 30px;
+    --toolbar-h: 46px;
+    --statusbar-h: 28px;
     --touch-target: 44px;
   }
 
@@ -989,30 +999,48 @@ main {
   }
 
   #tools-panel {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
     border-bottom: 1px solid var(--border);
     flex: 0 0 auto;
-    max-height: 82px;
-    overflow-y: hidden;
-    overflow-x: auto;
-    padding-top: 6px;
-    padding-bottom: 6px;
-  }
-
-  #tools-panel .panel-title.tools-snap-title,
-  #tools-panel .tools-snap-group {
-    display: none;
+    width: 100%;
+    max-height: 112px;
+    min-height: var(--touch-target);
+    padding: 6px 10px;
+    padding-bottom: 8px;
   }
 
   #tools-panel .tool-group {
     display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  #tools-panel .tool-group-header {
+    display: block;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.9px;
+    color: var(--text-muted);
+    font-weight: 700;
+    margin-bottom: 2px;
+    padding: 0 2px;
+    line-height: 1.1;
+  }
+
+  #tools-panel .tool-button-row {
+    display: flex;
     flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
     overflow-x: auto;
-    overflow-y: hidden;
     padding-bottom: 2px;
-    margin-bottom: 0;
   }
 
   #tools-panel .tool-btn {
@@ -1022,6 +1050,7 @@ main {
     height: var(--touch-target);
     min-height: var(--touch-target);
     padding: 0;
+    box-sizing: border-box;
   }
 
   #tools-panel .tool-btn span {
@@ -1029,23 +1058,23 @@ main {
   }
 
   #tools-panel .tool-btn svg {
-    width: 22px;
-    height: 22px;
+    width: 19px;
+    height: 19px;
+  }
+
+  #tools-panel .panel-title.tools-snap-title,
+  #tools-panel .tools-snap-group {
+    display: none;
   }
 
   #canvas-container {
     flex: 1 1 auto;
-    min-height: 35vh;
-  }
-
-  #story-bar,
-  #layer-bar {
-    gap: 6px;
+    min-height: 32vh;
   }
 
   #layer-bar {
-    padding-right: 8px;
     overflow-x: auto;
+    padding-right: 8px;
   }
 
   #layer-tabs {
@@ -1154,6 +1183,99 @@ main {
   #layer-tabs {
     min-height: var(--touch-target);
     align-items: center;
+  }
+}
+
+@media (max-width: 900px) {
+  :host {
+    --toolbar-h: 44px;
+    --statusbar-h: 26px;
+    --touch-target: 40px;
+  }
+
+  #creative-toolbar,
+  #story-bar,
+  #layer-bar {
+    padding-inline: 6px;
+  }
+
+  #tools-panel {
+    max-height: 100px;
+    gap: 8px;
+    padding: 5px 8px;
+  }
+
+  #tools-panel .tool-group-header {
+    margin-bottom: 1px;
+  }
+
+  #tools-panel .tool-btn {
+    width: var(--touch-target);
+    min-width: var(--touch-target);
+    height: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+
+  #tools-panel .tool-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+@media (max-width: 768px) and (orientation: portrait) {
+  :host {
+    --toolbar-h: 42px;
+    --touch-target: 38px;
+  }
+
+  #tools-panel {
+    max-height: 92px;
+    gap: 6px;
+    padding: 4px 8px;
+  }
+
+  #tools-panel .tool-group-header {
+    font-size: 8px;
+    letter-spacing: 0.6px;
+  }
+
+  #tools-panel .tool-btn {
+    width: var(--touch-target);
+    min-width: var(--touch-target);
+    height: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+
+  #tools-panel .tool-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  #tools-panel .tool-button-row {
+    gap: 5px;
+  }
+
+  #layer-tabs {
+    gap: 4px;
+  }
+
+  .layer-tab {
+    min-width: 76px;
+    padding: 0 10px;
+    min-height: 36px;
+    border-radius: 9px;
+  }
+}
+
+@media (max-width: 1024px) and (orientation: landscape) {
+  #tools-panel {
+    max-height: 88px;
+    gap: 8px;
+    padding-top: 4px;
+  }
+
+  #canvas-container {
+    min-height: 44vh;
   }
 }
 

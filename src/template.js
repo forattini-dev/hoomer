@@ -56,6 +56,8 @@ export const template = `
 
         <!-- Structure tools -->
         <div class="tool-group" id="tools-structure">
+          <div class="tool-group-header">Structure</div>
+          <div class="tool-button-row">
           <button class="tool-btn active" data-tool="wall" title="Wall (W)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="8" width="18" height="8" rx="1"/>
@@ -111,10 +113,13 @@ export const template = `
             </svg>
             <span>Eraser</span>
           </button>
+          </div>
         </div>
 
         <!-- Furniture tools -->
         <div class="tool-group" id="tools-furniture" style="display:none">
+          <div class="tool-group-header">Furniture</div>
+          <div class="tool-button-row">
           <button class="tool-btn" data-tool="furniture_item" title="Place Furniture (F)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9b7bb5" stroke-width="2">
               <rect x="4" y="14" width="16" height="4" rx="1"/><path d="M6 14V8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6"/><line x1="5" y1="18" x2="5" y2="21"/><line x1="19" y1="18" x2="19" y2="21"/>
@@ -133,10 +138,13 @@ export const template = `
             </svg>
             <span>Eraser</span>
           </button>
+          </div>
         </div>
 
         <!-- Electrical tools -->
         <div class="tool-group" id="tools-electrical" style="display:none">
+          <div class="tool-group-header">Electrical</div>
+          <div class="tool-button-row">
           <button class="tool-btn" data-tool="panel" title="Panel (Q)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="2">
               <rect x="4" y="5" width="16" height="14" rx="1"/>
@@ -170,10 +178,13 @@ export const template = `
             </svg>
             <span>Eraser</span>
           </button>
+          </div>
         </div>
 
         <!-- Plumbing tools -->
         <div class="tool-group" id="tools-plumbing" style="display:none">
+          <div class="tool-group-header">Plumbing</div>
+          <div class="tool-button-row">
           <button class="tool-btn" data-tool="pipe" title="Pipe (P)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4a90d9" stroke-width="2">
               <path d="M4 12h16"/><path d="M4 8v8"/><path d="M20 8v8"/>
@@ -198,6 +209,7 @@ export const template = `
             </svg>
             <span>Eraser</span>
           </button>
+          </div>
         </div>
 
         <div class="panel-title tools-snap-title" style="margin-top:16px">Snap</div>
@@ -354,6 +366,13 @@ export const template = `
         <!-- Floor properties -->
         <div id="floor-props" style="display:none">
           <div class="panel-title">Floor</div>
+          <div class="prop-group">
+            <label>Mode</label>
+            <div class="btn-group" id="floor-mode-group">
+              <button data-value="auto" class="prop-btn active">Auto</button>
+              <button data-value="draw" class="prop-btn">Draw</button>
+            </div>
+          </div>
           <div class="prop-group">
             <label>Material</label>
             <div class="material-grid" id="floor-material-group">
