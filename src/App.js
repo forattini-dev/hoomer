@@ -39,6 +39,27 @@ function createLayeredStory(name) {
   };
 }
 
+function asNumber(value, fallback) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function parseOrEmpty(value, mapFn) {
+  if (!Array.isArray(value)) return [];
+
+  const parsed = [];
+  for (let i = 0; i < value.length; i++) {
+    const item = mapFn(value[i]);
+    if (item) parsed.push(item);
+  }
+  return parsed;
+}
+
+function asIntegerOrMinusOne(value) {
+  const num = Number(value);
+  return Number.isInteger(num) ? num : -1;
+}
+
 export class App {
   constructor(root, hostElement, overrides = {}) {
     this.root = root;
@@ -353,43 +374,46 @@ export class App {
   }
 
   _setState(state) {
-    const storiesData = Array.isArray(state?.stories) ? state.stories : [];
+    const safeState = state && typeof state === 'object' ? state : {};
+    const storiesData = Array.isArray(safeState.stories) ? safeState.stories : [];
     const parsedStories = storiesData.map((s) => {
       // Migration: old format without layers
       if (!s.layers) return this._migrateOldStory(s);
 
       const struct = s.layers.structure || {};
-      const walls = (Array.isArray(struct.walls) ? struct.walls : []).map(w => Wall.fromData(w));
-      const doors = (struct.doors || []).map(d => {
-        if (d.wallIndex < 0 || d.wallIndex >= walls.length) return null;
-        return Door.fromData(d, walls[d.wallIndex]);
-      }).filter(Boolean);
-      const windows = (struct.windows || []).map(w => {
-        if (w.wallIndex < 0 || w.wallIndex >= walls.length) return null;
-        return Window.fromData(w, walls[w.wallIndex]);
-      }).filter(Boolean);
-      const floors = (Array.isArray(struct.floors) ? struct.floors : []).map(f => Floor.fromData(f));
-      const stairs = (Array.isArray(struct.stairs) ? struct.stairs : []).map(st => Stair.fromData(st));
-      const labels = (Array.isArray(struct.labels) ? struct.labels : []).map(lb => Label.fromData(lb));
+      const walls = parseOrEmpty(struct.walls, w => Wall.fromData(w));
+      const doors = parseOrEmpty(struct.doors, (d) => {
+        const wallIndex = asIntegerOrMinusOne(d && d.wallIndex);
+        if (wallIndex < 0 || wallIndex >= walls.length) return null;
+        return Door.fromData(d, walls[wallIndex]);
+      });
+      const windows = parseOrEmpty(struct.windows, (w) => {
+        const wallIndex = asIntegerOrMinusOne(w && w.wallIndex);
+        if (wallIndex < 0 || wallIndex >= walls.length) return null;
+        return Window.fromData(w, walls[wallIndex]);
+      });
+      const floors = parseOrEmpty(struct.floors, f => Floor.fromData(f));
+      const stairs = parseOrEmpty(struct.stairs, st => Stair.fromData(st));
+      const labels = parseOrEmpty(struct.labels, lb => Label.fromData(lb));
 
       const elec = s.layers.electrical || {};
-      const panels = (Array.isArray(elec.panels) ? elec.panels : []).map(p => ElectricalPanel.fromData(p));
-      const circuits = (Array.isArray(elec.circuits) ? elec.circuits : []).map(c => ElectricalCircuit.fromData(c));
-      const wires = (Array.isArray(elec.wires) ? elec.wires : []).map(w => Wire.fromData(w));
-      const esymbols = (Array.isArray(elec.symbols) ? elec.symbols : []).map(sym => ElectricalSymbol.fromData(sym));
+      const panels = parseOrEmpty(elec.panels, p => ElectricalPanel.fromData(p));
+      const circuits = parseOrEmpty(elec.circuits, c => ElectricalCircuit.fromData(c));
+      const wires = parseOrEmpty(elec.wires, w => Wire.fromData(w));
+      const esymbols = parseOrEmpty(elec.symbols, sym => ElectricalSymbol.fromData(sym));
 
       const plumb = s.layers.plumbing || {};
-      const pipes = (Array.isArray(plumb.pipes) ? plumb.pipes : []).map(p => Pipe.fromData(p));
-      const psymbols = (Array.isArray(plumb.symbols) ? plumb.symbols : []).map(sym => PlumbingSymbol.fromData(sym));
+      const pipes = parseOrEmpty(plumb.pipes, p => Pipe.fromData(p));
+      const psymbols = parseOrEmpty(plumb.symbols, sym => PlumbingSymbol.fromData(sym));
 
       const furn = s.layers.furniture || {};
-      const furnitureItems = (Array.isArray(furn.items) ? furn.items : []).map(f => Furniture.fromData(f));
+      const furnitureItems = parseOrEmpty(furn.items, f => Furniture.fromData(f));
 
       return {
         name: s.name,
         activeLayer: s.activeLayer || 'structure',
-        storyHeight: s.storyHeight || CONFIG.DEFAULT_STORY_HEIGHT,
-        slabThickness: s.slabThickness || CONFIG.DEFAULT_SLAB_THICKNESS,
+        storyHeight: asNumber(s.storyHeight, CONFIG.DEFAULT_STORY_HEIGHT),
+        slabThickness: asNumber(s.slabThickness, CONFIG.DEFAULT_SLAB_THICKNESS),
         layers: {
           structure:  { visible: struct.visible !== false, walls, doors, windows, floors, stairs, labels },
           furniture:  { visible: furn.visible !== false, items: furnitureItems },
@@ -403,12 +427,13 @@ export class App {
       parsedStories.push(createLayeredStory(storyName(0)));
     }
 
-    this.activeStoryIndex = Number.isInteger(state?.activeStoryIndex) && state.activeStoryIndex >= 0
-      ? Math.min(parsedStories.length - 1, state.activeStoryIndex)
+    const requestedStoryIndex = asIntegerOrMinusOne(safeState.activeStoryIndex);
+    this.activeStoryIndex = requestedStoryIndex >= 0
+      ? Math.min(parsedStories.length - 1, requestedStoryIndex)
       : 0;
-    this.activeTool = state.activeTool || this.activeTool || 'wall';
-    this.projectName = state.projectName || this.projectName || 'Untitled Project';
-    this._setUnitPrices(state.unitPrices);
+    this.activeTool = safeState.activeTool || this.activeTool || 'wall';
+    this.projectName = safeState.projectName || this.projectName || 'Untitled Project';
+    this._setUnitPrices(safeState.unitPrices);
     this.stories = parsedStories;
     this._clearSelection();
     this._syncStoryTabs();
@@ -425,24 +450,26 @@ export class App {
   _getStoryElevation(index) {
     let elevation = 0;
     for (let i = 0; i < index; i++) {
-      elevation += this.stories[i].storyHeight || CONFIG.DEFAULT_STORY_HEIGHT;
+      elevation += asNumber(this.stories[i].storyHeight, CONFIG.DEFAULT_STORY_HEIGHT);
     }
     return elevation;
   }
 
   _migrateOldStory(s) {
-    const walls = (s.walls || []).map(w => Wall.fromData(w));
-    const doors = (s.doors || []).map(d => {
-      if (d.wallIndex < 0 || d.wallIndex >= walls.length) return null;
-      return Door.fromData(d, walls[d.wallIndex]);
-    }).filter(Boolean);
-    const windows = (s.windows || []).map(w => {
-      if (w.wallIndex < 0 || w.wallIndex >= walls.length) return null;
-      return Window.fromData(w, walls[w.wallIndex]);
-    }).filter(Boolean);
-    const floors = (s.floors || []).map(f => Floor.fromData(f));
-    const stairs = (s.stairs || []).map(st => Stair.fromData(st));
-    const labels = (s.labels || []).map(lb => Label.fromData(lb));
+    const walls = parseOrEmpty(s.walls, w => Wall.fromData(w));
+    const doors = parseOrEmpty(s.doors, (d) => {
+      const wallIndex = asIntegerOrMinusOne(d && d.wallIndex);
+      if (wallIndex < 0 || wallIndex >= walls.length) return null;
+      return Door.fromData(d, walls[wallIndex]);
+    });
+    const windows = parseOrEmpty(s.windows, (w) => {
+      const wallIndex = asIntegerOrMinusOne(w && w.wallIndex);
+      if (wallIndex < 0 || wallIndex >= walls.length) return null;
+      return Window.fromData(w, walls[wallIndex]);
+    });
+    const floors = parseOrEmpty(s.floors, f => Floor.fromData(f));
+    const stairs = parseOrEmpty(s.stairs, st => Stair.fromData(st));
+    const labels = parseOrEmpty(s.labels, lb => Label.fromData(lb));
 
     return {
       name: s.name,

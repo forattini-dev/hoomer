@@ -1046,15 +1046,10 @@ main {
 
 @media (max-width: 1280px), (pointer: coarse), (hover: none) {
   :host {
-    --touch-target: 40px;
+    --panel-w: 100%;
+    --touch-target: 38px;
     --toolbar-h: 42px;
     --statusbar-h: 26px;
-  }
-  :host {
-    --panel-w: 100%;
-    --toolbar-h: 46px;
-    --statusbar-h: 28px;
-    --touch-target: 44px;
   }
 
   #creative-toolbar,
@@ -1305,9 +1300,9 @@ main {
 
 @media (max-width: 900px) {
   :host {
-    --toolbar-h: 44px;
+    --toolbar-h: 40px;
     --statusbar-h: 26px;
-    --touch-target: 40px;
+    --touch-target: 38px;
   }
 
   #creative-toolbar,
