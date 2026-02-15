@@ -17,6 +17,12 @@ export class FPSControls {
     this._direction = new THREE.Vector3();
     this._raycaster = new THREE.Raycaster();
     this._clock = new THREE.Clock();
+    this._touchMoveX = 0;
+    this._touchMoveZ = 0;
+    this._touchLookYaw = 0;
+    this._touchLookPitch = 0;
+
+    this._lookSensitivity = 0.0025;
 
     // Pointer lock controls
     this.pointerLock = new PointerLockControls(this.camera, this.domElement);
@@ -48,6 +54,10 @@ export class FPSControls {
     this._keys.backward = false;
     this._keys.left = false;
     this._keys.right = false;
+    this._touchMoveX = 0;
+    this._touchMoveZ = 0;
+    this._touchLookYaw = 0;
+    this._touchLookPitch = 0;
     document.removeEventListener('keydown', this._onKeyDown);
     document.removeEventListener('keyup', this._onKeyUp);
     document.removeEventListener('pointerlockchange', this._onLockChange);
@@ -81,8 +91,23 @@ export class FPSControls {
     }
   }
 
+  setTouchMove(x = 0, z = 0) {
+    const clamp = (v) => Math.max(-1, Math.min(1, Number(v) || 0));
+    this._touchMoveX = clamp(x);
+    this._touchMoveZ = clamp(z);
+  }
+
+  addTouchLook(dx = 0, dy = 0) {
+    this._touchLookYaw += (Number(dx) || 0) * this._lookSensitivity;
+    this._touchLookPitch += (Number(dy) || 0) * this._lookSensitivity;
+  }
+
   update() {
-    if (!this._enabled || !this.pointerLock.isLocked) return;
+    if (!this._enabled) return;
+
+    const hasTouchMove = this._touchMoveX !== 0 || this._touchMoveZ !== 0;
+    const hasTouchLook = this._touchLookYaw !== 0 || this._touchLookPitch !== 0;
+    if (!this.pointerLock.isLocked && !hasTouchMove && !hasTouchLook) return;
 
     const delta = this._clock.getDelta();
     const speed = this.moveSpeed * delta;
@@ -93,8 +118,10 @@ export class FPSControls {
     if (this._keys.backward) this._direction.z += 1;
     if (this._keys.left) this._direction.x -= 1;
     if (this._keys.right) this._direction.x += 1;
+    if (this._touchMoveX) this._direction.x += this._touchMoveX;
+    if (this._touchMoveZ) this._direction.z += this._touchMoveZ;
 
-    if (this._direction.lengthSq() === 0) return;
+    if (this._direction.lengthSq() === 0 && !hasTouchLook) return;
     this._direction.normalize();
 
     // Transform direction by camera yaw (ignore pitch)
@@ -112,6 +139,16 @@ export class FPSControls {
     move.addScaledVector(camDir, -this._direction.z);
     move.addScaledVector(camRight, this._direction.x);
     move.normalize().multiplyScalar(speed);
+
+    if (this._touchLookYaw || this._touchLookPitch) {
+      const euler = new THREE.Euler(0, this.camera.rotation.y, this.camera.rotation.x, 'YXZ');
+      euler.y -= this._touchLookYaw;
+      euler.x -= this._touchLookPitch;
+      euler.x = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, euler.x));
+      this.camera.rotation.set(euler.x, euler.y, 0, 'YXZ');
+      this._touchLookYaw = 0;
+      this._touchLookPitch = 0;
+    }
 
     // Collision detection via raycasts
     const wallMeshes = this.viewer.getWallMeshes();

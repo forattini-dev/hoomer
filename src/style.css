@@ -549,6 +549,83 @@ main {
   -ms-touch-action: none;
 }
 
+/* ── Mobile 3D Navigation ────────────────────── */
+#mobile-nav-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  display: none;
+}
+
+#mobile-move-controls {
+  position: absolute;
+  left: 10px;
+  bottom: 14px;
+  width: 132px;
+  height: 132px;
+  pointer-events: auto;
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+  align-items: center;
+  justify-items: center;
+  gap: 6px;
+  opacity: 0.92;
+}
+
+#mobile-look-control {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 52%;
+  height: 52%;
+  pointer-events: auto;
+}
+
+#mobile-move-controls .walk-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(22, 25, 32, 0.4);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+#walk-btn-up { grid-area: up; }
+#walk-btn-left { grid-area: left; }
+#walk-btn-down { grid-area: down; }
+#walk-btn-right { grid-area: right; }
+
+#mobile-nav-controls .walk-btn:hover,
+#mobile-nav-controls .walk-btn:active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+:host([data-mode="3d"][data-nav-mode="fps"]) #mobile-nav-controls {
+  display: block;
+}
+
+#mobile-look-control::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 76px;
+  height: 76px;
+  border-radius: 999px;
+  border: 1px dashed rgba(255, 255, 255, 0.38);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 /* ── Statusbar ──────────────────────────────── */
 #statusbar {
   height: var(--statusbar-h);
@@ -867,6 +944,12 @@ main {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #mobile-nav-controls {
+    display: none !important;
+  }
 }
 
 /* ── Share Password Modal ──────────────────────── */

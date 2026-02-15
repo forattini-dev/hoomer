@@ -230,8 +230,17 @@ export const template = `
         </div>
       </aside>
 
-      <div id="canvas-container">
-        <canvas id="main-canvas"></canvas>
+    <div id="canvas-container">
+      <canvas id="main-canvas"></canvas>
+      <div id="mobile-nav-controls" aria-hidden="true">
+        <div id="mobile-move-controls">
+          <button id="walk-btn-up" class="walk-btn" data-dir="up" title="Move forward">↑</button>
+          <button id="walk-btn-left" class="walk-btn" data-dir="left" title="Move left">←</button>
+          <button id="walk-btn-down" class="walk-btn" data-dir="down" title="Move backward">↓</button>
+          <button id="walk-btn-right" class="walk-btn" data-dir="right" title="Move right">→</button>
+        </div>
+        <div id="mobile-look-control" aria-label="Drag to look around"></div>
+      </div>
       </div>
 
       <aside id="properties-panel">
