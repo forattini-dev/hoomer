@@ -131,6 +131,10 @@ export class App {
     this.panStart = null;
     this.hoveredWall = null;
 
+    this._pointers = new Map();
+    this._pinchState = null;
+    this._primaryPointerId = null;
+
     // Dragging (select tool)
     this.isDragging = false;
     this.dragType = null;
@@ -160,10 +164,16 @@ export class App {
     // History
     this.history = new History();
 
+    this._supportsPointerEvents = typeof window !== 'undefined' && ('PointerEvent' in window);
+
     // Bound handlers
     this._onMouseDownBound = e => this._onMouseDown(e);
     this._onMouseMoveBound = e => this._onMouseMove(e);
     this._onMouseUpBound = e => this._onMouseUp(e);
+    this._onPointerDownBound = e => this._onPointerDown(e);
+    this._onPointerMoveBound = e => this._onPointerMove(e);
+    this._onPointerUpBound = e => this._onPointerUp(e);
+    this._onPointerCancelBound = e => this._onPointerCancel(e);
     this._onWheelBound = e => this._onWheel(e);
     this._onContextMenuBound = e => { e.preventDefault(); this._onRightClick(); };
     this._onCanvasFocusBound = () => this.hostElement.focus();
@@ -567,32 +577,51 @@ export class App {
 
   // ── Events ──────────────────────────────────
   _bindEvents() {
-    this.canvas.addEventListener('mousedown', this._onMouseDownBound);
-    this.canvas.addEventListener('mousemove', this._onMouseMoveBound);
-    this.canvas.addEventListener('mouseup', this._onMouseUpBound);
+    if (this._supportsPointerEvents) {
+      this.canvas.addEventListener('pointerdown', this._onPointerDownBound, { passive: false });
+      this.canvas.addEventListener('pointermove', this._onPointerMoveBound, { passive: false });
+      this.canvas.addEventListener('pointerup', this._onPointerUpBound, { passive: false });
+      this.canvas.addEventListener('pointercancel', this._onPointerCancelBound);
+      this.canvas.addEventListener('pointerleave', this._onPointerCancelBound);
+      this.canvas.addEventListener('pointerout', this._onPointerCancelBound);
+    } else {
+      this.canvas.addEventListener('mousedown', this._onMouseDownBound);
+      this.canvas.addEventListener('mousemove', this._onMouseMoveBound);
+      this.canvas.addEventListener('mouseup', this._onMouseUpBound);
+    }
     this.canvas.addEventListener('wheel', this._onWheelBound, { passive: false });
     this.canvas.addEventListener('contextmenu', this._onContextMenuBound);
 
     this.hostElement.addEventListener('keydown', this._onKeyDownBound);
     this.hostElement.addEventListener('keyup', this._onKeyUpBound);
 
+    this.canvas.addEventListener('pointerdown', this._onCanvasFocusBound, true);
     this.canvas.addEventListener('mousedown', this._onCanvasFocusBound, true);
   }
 
-  _onMouseDown(e) {
+  _getCanvasCoords(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      sx: e.clientX - rect.left,
+      sy: e.clientY - rect.top,
+      x: e.clientX,
+      y: e.clientY,
+    };
+  }
+
+  _setZoomAround(sx, sy, nextZoom) {
+    const clamped = Math.max(CONFIG.MIN_ZOOM, Math.min(CONFIG.MAX_ZOOM, nextZoom));
+    const world = this.screenToWorld(sx, sy);
+    this.zoom = clamped;
+    this.panX = sx - world.x * clamped;
+    this.panY = sy - world.y * clamped;
+    this.$('zoom-display').textContent = Math.round(this.zoom * 100) + '%';
+  }
+
+  _startToolAction(e) {
     if (this.is3DMode) return;
 
-    const rect = this.canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
-    if (e.button === 1 || e.button === 2) {
-      this.isPanning = true;
-      this.panStart = { x: e.clientX, y: e.clientY, panX: this.panX, panY: this.panY };
-      this.canvas.style.cursor = 'grabbing';
-      return;
-    }
-
+    const { sx, sy } = this._getCanvasCoords(e);
     const world = this.screenToWorld(sx, sy);
     const snapped = this._snap(world.x, world.y);
 
@@ -654,12 +683,61 @@ export class App {
     this._render();
   }
 
+  _startPanning(e) {
+    const { x, y } = { x: e.clientX, y: e.clientY };
+    this.isPanning = true;
+    this.panStart = { x, y, panX: this.panX, panY: this.panY };
+    this.canvas.style.cursor = 'grabbing';
+  }
+
+  _onMouseDown(e) {
+    if (this.is3DMode) return;
+    if (e.button === 1 || e.button === 2) {
+      this._startPanning(e);
+      return;
+    }
+    this._startToolAction(e);
+  }
+
+  _onPointerDown(e) {
+    if (this.is3DMode) return;
+    if (e.button === 2) return;
+    e.preventDefault();
+
+    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!this._primaryPointerId) this._primaryPointerId = e.pointerId;
+
+    if (this._pointers.size >= 2) {
+      const ids = [...this._pointers.keys()];
+      const p1 = this._pointers.get(ids[0]);
+      const p2 = this._pointers.get(ids[1]);
+      const dx = p1.x - p2.x;
+      const dy = p1.y - p2.y;
+      this._pinchState = {
+        ids: [ids[0], ids[1]],
+        startDist: Math.max(1, Math.hypot(dx, dy)),
+        startZoom: this.zoom,
+      };
+      this.isPanning = false;
+      this.isDragging = false;
+      this._dragFurniture = null;
+      this.dragWall = null;
+      this._dragFurnitureOffset = null;
+      this._dragOffset = null;
+      return;
+    }
+
+    if (e.pointerType === 'mouse' && !e.isPrimary) return;
+    if (e.button === 1 || e.button === 2 || e.button === 5) {
+      this._startPanning(e);
+      return;
+    }
+    this._startToolAction(e);
+  }
+
   _onMouseMove(e) {
     if (this.is3DMode) return;
-    const rect = this.canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-
+    const { sx, sy } = this._getCanvasCoords(e);
     if (this.isPanning) {
       this.panX = this.panStart.panX + (e.clientX - this.panStart.x);
       this.panY = this.panStart.panY + (e.clientY - this.panStart.y);
@@ -671,8 +749,85 @@ export class App {
     const snapped = this._snap(world.x, world.y);
     this.mouseWorld = snapped;
 
-    this.$('status-coords').textContent =
-      `X: ${Math.round(snapped.x)} cm  Y: ${Math.round(snapped.y)} cm`;
+    this.$('status-coords').textContent = `X: ${Math.round(snapped.x)} cm  Y: ${Math.round(snapped.y)} cm`;
+
+    if (this.isDragging && this.dragWall) {
+      this._doDrag(snapped.x, snapped.y);
+      this._render();
+      return;
+    }
+
+    if (this.isDragging && this._dragFurniture) {
+      this._dragFurniture.x = snapped.x - this._dragFurnitureOffset.dx;
+      this._dragFurniture.y = snapped.y - this._dragFurnitureOffset.dy;
+      this._syncSelection();
+      this._render();
+      return;
+    }
+
+    if (this.activeTool === 'select' || this.activeTool === 'eraser' || this.activeTool === 'door' || this.activeTool === 'window') {
+      this.hoveredWall = null;
+      for (const wall of this.walls) {
+        if (wall.hitTest(world.x, world.y)) { this.hoveredWall = wall; break; }
+      }
+      if (this.activeTool === 'select' && this.selectedWall) {
+        const threshold = CONFIG.SNAP_RADIUS / this.zoom;
+        const w = this.selectedWall;
+        if (Geom.dist(world.x, world.y, w.x1, w.y1) < threshold ||
+            Geom.dist(world.x, world.y, w.x2, w.y2) < threshold) {
+          this.canvas.style.cursor = 'move';
+        } else if (this.hoveredWall === w) {
+          this.canvas.style.cursor = 'grab';
+        } else {
+          this.canvas.style.cursor = this.hoveredWall ? 'pointer' : 'default';
+        }
+      } else {
+        this.canvas.style.cursor = this.hoveredWall ? 'pointer' : (this.activeTool === 'select' ? 'default' : 'crosshair');
+      }
+    }
+
+    this._render();
+  }
+
+  _onPointerMove(e) {
+    if (this.is3DMode) return;
+    e.preventDefault();
+    if (!this._pointers.has(e.pointerId)) return;
+
+    const rect = this.canvas.getBoundingClientRect();
+    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (this._pinchState && this._pinchState.ids.includes(e.pointerId)) {
+      const [id1, id2] = this._pinchState.ids;
+      const p1 = this._pointers.get(id1);
+      const p2 = this._pointers.get(id2);
+      if (!p1 || !p2) return;
+
+      const cx = (p1.x + p2.x) / 2 - rect.left;
+      const cy = (p1.y + p2.y) / 2 - rect.top;
+      const dx = p1.x - p2.x;
+      const dy = p1.y - p2.y;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      const nextZoom = this._pinchState.startZoom * (dist / this._pinchState.startDist);
+      this._setZoomAround(cx, cy, nextZoom);
+      this._render();
+      return;
+    }
+
+    if (!this._pointers.has(e.pointerId)) return;
+    if (!this._primaryPointerId || e.pointerId !== this._primaryPointerId) return;
+
+    const { sx, sy } = { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
+    const world = this.screenToWorld(sx, sy);
+    const snapped = this._snap(world.x, world.y);
+    if (this.isPanning) {
+      this.panX = this.panStart.panX + (e.clientX - this.panStart.x);
+      this.panY = this.panStart.panY + (e.clientY - this.panStart.y);
+      this._render();
+      return;
+    }
+    this.mouseWorld = snapped;
+    this.$('status-coords').textContent = `X: ${Math.round(snapped.x)} cm  Y: ${Math.round(snapped.y)} cm`;
 
     if (this.isDragging && this.dragWall) {
       this._doDrag(snapped.x, snapped.y);
@@ -714,26 +869,46 @@ export class App {
 
   _onMouseUp() {
     if (this.is3DMode) return;
-    if (this.isPanning) { this.isPanning = false; this.canvas.style.cursor = 'crosshair'; }
-    if (this.isDragging) { this._finishDrag(); }
+    if (this.isPanning) {
+      this.isPanning = false;
+      this.canvas.style.cursor = 'crosshair';
+    }
+    if (this.isDragging) this._finishDrag();
+  }
+
+  _onPointerUp(e) {
+    if (this.is3DMode) return;
+    e.preventDefault();
+    this._pointers.delete(e.pointerId);
+    if (this._pinchState && this._pinchState.ids.includes(e.pointerId)) {
+      this._pinchState = null;
+    }
+
+    if (this._primaryPointerId === e.pointerId) {
+      const remaining = [...this._pointers.keys()];
+      this._primaryPointerId = remaining[0] || null;
+    }
+
+    if (this._pointers.size === 0) {
+      if (this.isPanning) {
+        this.isPanning = false;
+        this.canvas.style.cursor = 'crosshair';
+      }
+      if (this.isDragging) this._finishDrag();
+    }
+  }
+
+  _onPointerCancel(e) {
+    this._onPointerUp(e);
   }
 
   _onWheel(e) {
     if (this.is3DMode) return;
     e.preventDefault();
-    const rect = this.canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const before = this.screenToWorld(mx, my);
-
+    const { sx, sy } = this._getCanvasCoords(e);
     const delta = e.deltaY > 0 ? -CONFIG.ZOOM_STEP : CONFIG.ZOOM_STEP;
-    this.zoom = Math.max(CONFIG.MIN_ZOOM, Math.min(CONFIG.MAX_ZOOM, this.zoom + delta * this.zoom));
-
-    const after = this.screenToWorld(mx, my);
-    this.panX += (after.x - before.x) * this.zoom;
-    this.panY += (after.y - before.y) * this.zoom;
-
-    this.$('zoom-display').textContent = Math.round(this.zoom * 100) + '%';
+    const nextZoom = this.zoom + delta * this.zoom;
+    this._setZoomAround(sx, sy, nextZoom);
     this._render();
   }
 
@@ -2812,11 +2987,21 @@ export class App {
 
   // ── Cleanup ─────────────────────────────────
   destroy() {
-    this.canvas.removeEventListener('mousedown', this._onMouseDownBound);
-    this.canvas.removeEventListener('mousemove', this._onMouseMoveBound);
-    this.canvas.removeEventListener('mouseup', this._onMouseUpBound);
+    if (this._supportsPointerEvents) {
+      this.canvas.removeEventListener('pointerdown', this._onPointerDownBound);
+      this.canvas.removeEventListener('pointermove', this._onPointerMoveBound);
+      this.canvas.removeEventListener('pointerup', this._onPointerUpBound);
+      this.canvas.removeEventListener('pointercancel', this._onPointerCancelBound);
+      this.canvas.removeEventListener('pointerleave', this._onPointerCancelBound);
+      this.canvas.removeEventListener('pointerout', this._onPointerCancelBound);
+    } else {
+      this.canvas.removeEventListener('mousedown', this._onMouseDownBound);
+      this.canvas.removeEventListener('mousemove', this._onMouseMoveBound);
+      this.canvas.removeEventListener('mouseup', this._onMouseUpBound);
+    }
     this.canvas.removeEventListener('wheel', this._onWheelBound, { passive: false });
     this.canvas.removeEventListener('contextmenu', this._onContextMenuBound);
+    this.canvas.removeEventListener('pointerdown', this._onCanvasFocusBound, true);
     this.canvas.removeEventListener('mousedown', this._onCanvasFocusBound, true);
     this.hostElement.removeEventListener('keydown', this._onKeyDownBound);
     this.hostElement.removeEventListener('keyup', this._onKeyUpBound);
