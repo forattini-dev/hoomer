@@ -1115,7 +1115,7 @@ main {
 
   #layer-tabs {
     width: max-content;
-    gap: 6px;
+    gap: 4px;
     min-height: var(--touch-target);
     overflow-x: auto;
     padding-bottom: 2px;
@@ -1123,9 +1123,9 @@ main {
   }
 
   .layer-tab {
-    width: var(--touch-target);
-    min-width: var(--touch-target);
-    min-height: 40px;
+    width: calc(var(--touch-target) - 8px);
+    min-width: calc(var(--touch-target) - 8px);
+    min-height: 36px;
     padding: 0;
     border-radius: 10px;
     justify-content: center;
@@ -1133,8 +1133,8 @@ main {
   }
 
   .layer-tab .layer-icon {
-    font-size: 16px;
-    width: 16px;
+    font-size: 15px;
+    width: 15px;
   }
 
   .layer-tab .layer-label-long {
@@ -1155,7 +1155,6 @@ main {
 
   .top-tab,
   .story-tab,
-  .layer-tab,
   #creative-toolbar button,
   #story-bar button,
   .tool-btn,
@@ -1168,6 +1167,10 @@ main {
     min-height: var(--touch-target);
     min-width: var(--touch-target);
     line-height: 1;
+  }
+
+  .layer-tab {
+    min-height: 36px;
   }
 
   .tool-btn,
@@ -1246,6 +1249,21 @@ main {
     width: 18px;
     height: 18px;
   }
+
+  #layer-tabs {
+    gap: 3px;
+  }
+
+  .layer-tab {
+    width: calc(var(--touch-target) - 8px);
+    min-width: calc(var(--touch-target) - 8px);
+    min-height: 34px;
+  }
+
+  .layer-tab .layer-icon {
+    font-size: 14px;
+    width: 14px;
+  }
 }
 
 @media (max-width: 768px) and (orientation: portrait) {
@@ -1286,9 +1304,9 @@ main {
   }
 
   .layer-tab {
-    min-width: 76px;
-    padding: 0 10px;
-    min-height: 36px;
+    width: calc(var(--touch-target) - 6px);
+    min-width: calc(var(--touch-target) - 6px);
+    min-height: 34px;
     border-radius: 9px;
   }
 }
