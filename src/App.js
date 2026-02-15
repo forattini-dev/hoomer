@@ -19,50 +19,7 @@ import { Viewer3D } from './Viewer3D.js';
 import { ShareManager } from './ShareManager.js';
 import { exportPNG, exportJSON } from './ExportManager.js';
 import { CostsView } from './CostsView.js';
-
-function storyName(i) {
-  return i === 0 ? 'Ground Floor' : `Floor ${i}`;
-}
-
-function createLayeredStory(name) {
-  return {
-    name,
-    activeLayer: 'structure',
-    storyHeight: CONFIG.DEFAULT_STORY_HEIGHT,
-    slabThickness: CONFIG.DEFAULT_SLAB_THICKNESS,
-    layers: {
-      structure:  { visible: true, walls: [], doors: [], windows: [], floors: [], stairs: [], labels: [] },
-      furniture:  { visible: true, items: [] },
-      electrical: { visible: true, panels: [], circuits: [], wires: [], symbols: [] },
-      plumbing:   { visible: true, pipes: [], symbols: [] },
-    },
-  };
-}
-
-function asNumber(value, fallback) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
-}
-
-function parseOrEmpty(value, mapFn) {
-  if (!Array.isArray(value)) return [];
-
-  const parsed = [];
-  for (let i = 0; i < value.length; i++) {
-    const item = mapFn(value[i]);
-    if (item) parsed.push(item);
-  }
-  return parsed;
-}
-
-function asArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function asIntegerOrMinusOne(value) {
-  const num = Number(value);
-  return Number.isInteger(num) ? num : -1;
-}
+import { createLayeredStory, deserializeState, serializeState, storyName } from './AppStateIO.js';
 
 export class App {
   constructor(root, hostElement, overrides = {}) {
@@ -324,60 +281,7 @@ export class App {
 
   // ── State Serialization ─────────────────────
   _getState() {
-    const stories = this.stories.map((story) => this._serializeStoryForSave(story));
-
-    return {
-      activeStoryIndex: this.activeStoryIndex,
-      activeTool: this.activeTool,
-      projectName: this.projectName,
-      unitPrices: this._cloneUnitPrices(),
-      stories,
-    };
-  }
-
-  _serializeStoryForSave(story) {
-    const structure = story.layers.structure;
-    const furniture = story.layers.furniture;
-    const electrical = story.layers.electrical;
-    const plumbing = story.layers.plumbing;
-
-    return {
-      name: story.name,
-      activeLayer: story.activeLayer,
-      storyHeight: story.storyHeight,
-      slabThickness: story.slabThickness,
-      layers: {
-        structure: {
-          visible: structure.visible,
-          walls: structure.walls.map(w => w.serialize()),
-          doors: structure.doors.map(d => d.serialize(structure.walls.indexOf(d.wall))),
-          windows: structure.windows.map(win => win.serialize(structure.walls.indexOf(win.wall))),
-          floors: structure.floors.map(f => f.serialize()),
-          stairs: structure.stairs.map(st => st.serialize()),
-          labels: (structure.labels || []).map(lb => lb.serialize()),
-        },
-        furniture: {
-          visible: furniture.visible,
-          items: furniture.items.map(f => f.serialize()),
-        },
-        electrical: {
-          visible: electrical.visible,
-          panels: (electrical.panels || []).map(p => p.serialize()),
-          circuits: (electrical.circuits || []).map(c => c.serialize()),
-          wires: electrical.wires.map(w => w.serialize()),
-          symbols: electrical.symbols.map(sym => sym.serialize()),
-        },
-        plumbing: {
-          visible: plumbing.visible,
-          pipes: plumbing.pipes.map(p => p.serialize()),
-          symbols: plumbing.symbols.map(sym => sym.serialize()),
-        },
-      },
-    };
-  }
-
-  _cloneUnitPrices() {
-    return { ...(this.costsView.unitPrices || {}) };
+    return serializeState(this);
   }
 
   _setUnitPrices(prices) {
@@ -389,21 +293,12 @@ export class App {
   }
 
   _setState(state) {
-    const safeState = state && typeof state === 'object' ? state : {};
-    const parsedStories = asArray(safeState.stories).map((story) => this._deserializeStory(story));
-
-    if (!parsedStories.length) {
-      parsedStories.push(createLayeredStory(storyName(0)));
-    }
-
-    const requestedStoryIndex = asIntegerOrMinusOne(safeState.activeStoryIndex);
-    this.activeStoryIndex = requestedStoryIndex >= 0
-      ? Math.min(parsedStories.length - 1, requestedStoryIndex)
-      : 0;
-    this.activeTool = safeState.activeTool || this.activeTool || 'wall';
-    this.projectName = safeState.projectName || this.projectName || 'Untitled Project';
-    this._setUnitPrices(safeState.unitPrices);
-    this.stories = parsedStories;
+    const normalized = deserializeState(state);
+    this.stories = normalized.stories;
+    this.activeStoryIndex = normalized.activeStoryIndex;
+    this.activeTool = normalized.activeTool;
+    this.projectName = normalized.projectName;
+    this._setUnitPrices(normalized.unitPrices);
     this._clearSelection();
     this._syncStoryTabs();
     this._syncLayerTabs();
@@ -418,101 +313,12 @@ export class App {
 
   _getStoryElevation(index) {
     let elevation = 0;
-    for (let i = 0; i < index; i++) {
-      elevation += asNumber(this.stories[i].storyHeight, CONFIG.DEFAULT_STORY_HEIGHT);
+    const last = Math.max(0, Math.min(index, this.stories.length));
+    for (let i = 0; i < last; i++) {
+      const storyHeight = Number(this.stories[i]?.storyHeight);
+      elevation += Number.isFinite(storyHeight) ? storyHeight : CONFIG.DEFAULT_STORY_HEIGHT;
     }
     return elevation;
-  }
-
-  _migrateOldStory(s) {
-    return {
-      name: s.name,
-      activeLayer: 'structure',
-      storyHeight: CONFIG.DEFAULT_STORY_HEIGHT,
-      slabThickness: CONFIG.DEFAULT_SLAB_THICKNESS,
-      layers: {
-        structure: this._deserializeStructureLayer({
-          visible: true,
-          walls: s.walls,
-          doors: s.doors,
-          windows: s.windows,
-          floors: s.floors,
-          stairs: s.stairs,
-          labels: s.labels,
-        }),
-        furniture: { visible: true, items: [] },
-        electrical: { visible: true, panels: [], circuits: [], wires: [], symbols: [] },
-        plumbing: { visible: true, pipes: [], symbols: [] },
-      },
-    };
-  }
-
-  _deserializeStory(story) {
-    if (!story || typeof story !== 'object') return createLayeredStory(storyName(0));
-    if (!story.layers) return this._migrateOldStory(story);
-
-    const layers = story.layers;
-    return {
-      name: story.name,
-      activeLayer: story.activeLayer || 'structure',
-      storyHeight: asNumber(story.storyHeight, CONFIG.DEFAULT_STORY_HEIGHT),
-      slabThickness: asNumber(story.slabThickness, CONFIG.DEFAULT_SLAB_THICKNESS),
-      layers: {
-        structure: this._deserializeStructureLayer(layers.structure || {}),
-        furniture: this._deserializeFurnitureLayer(layers.furniture || {}),
-        electrical: this._deserializeElectricalLayer(layers.electrical || {}),
-        plumbing: this._deserializePlumbingLayer(layers.plumbing || {}),
-      },
-    };
-  }
-
-  _deserializeStructureLayer(layer) {
-    const walls = parseOrEmpty(layer.walls, w => Wall.fromData(w));
-    const doors = parseOrEmpty(layer.doors, (d) => {
-      const wallIndex = asIntegerOrMinusOne(d && d.wallIndex);
-      if (wallIndex < 0 || wallIndex >= walls.length) return null;
-      return Door.fromData(d, walls[wallIndex]);
-    });
-    const windows = parseOrEmpty(layer.windows, (w) => {
-      const wallIndex = asIntegerOrMinusOne(w && w.wallIndex);
-      if (wallIndex < 0 || wallIndex >= walls.length) return null;
-      return Window.fromData(w, walls[wallIndex]);
-    });
-
-    return {
-      visible: layer.visible !== false,
-      walls,
-      doors,
-      windows,
-      floors: parseOrEmpty(layer.floors, f => Floor.fromData(f)),
-      stairs: parseOrEmpty(layer.stairs, st => Stair.fromData(st)),
-      labels: parseOrEmpty(layer.labels, lb => Label.fromData(lb)),
-    };
-  }
-
-  _deserializeElectricalLayer(layer) {
-    return {
-      visible: layer.visible !== false,
-      panels: parseOrEmpty(layer.panels, p => ElectricalPanel.fromData(p)),
-      circuits: parseOrEmpty(layer.circuits, c => ElectricalCircuit.fromData(c)),
-      wires: parseOrEmpty(layer.wires, w => Wire.fromData(w)),
-      symbols: parseOrEmpty(layer.symbols, sym => ElectricalSymbol.fromData(sym)),
-    };
-  }
-
-  _deserializePlumbingLayer(layer) {
-    return {
-      visible: layer.visible !== false,
-      pipes: parseOrEmpty(layer.pipes, p => Pipe.fromData(p)),
-      symbols: parseOrEmpty(layer.symbols, sym => PlumbingSymbol.fromData(sym)),
-    };
-  }
-
-  _deserializeFurnitureLayer(layer) {
-    return {
-      visible: layer.visible !== false,
-      items: parseOrEmpty(layer.items, f => Furniture.fromData(f)),
-    };
   }
 
   _pushHistory() {
