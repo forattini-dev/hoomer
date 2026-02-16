@@ -13,7 +13,6 @@ export class FPSControls {
 
     this._enabled = false;
     this._keys = { forward: false, backward: false, left: false, right: false };
-    this._velocity = new THREE.Vector3();
     this._direction = new THREE.Vector3();
     this._raycaster = new THREE.Raycaster();
     this._clock = new THREE.Clock();
@@ -26,6 +25,22 @@ export class FPSControls {
 
     // Pointer lock controls
     this.pointerLock = new PointerLockControls(this.camera, this.domElement);
+
+    // Shadow DOM fix: PointerLockControls checks document.pointerLockElement
+    // which is retargeted across shadow boundaries (returns the host element
+    // instead of the actual canvas). Override isLocked with a correct getter.
+    const root = this.domElement.getRootNode();
+    this._shadowHost = root !== document ? root.host : null;
+    const plCanvas = this.domElement;
+    const shadowHost = this._shadowHost;
+    Object.defineProperty(this.pointerLock, 'isLocked', {
+      get() {
+        const el = document.pointerLockElement;
+        return el === plCanvas || (shadowHost !== null && el === shadowHost);
+      },
+      set() { /* managed by getter */ },
+      configurable: true,
+    });
 
     // Event handlers
     this._onKeyDown = this._handleKeyDown.bind(this);
@@ -107,12 +122,8 @@ export class FPSControls {
 
     const hasTouchMove = this._touchMoveX !== 0 || this._touchMoveZ !== 0;
     const hasTouchLook = this._touchLookYaw !== 0 || this._touchLookPitch !== 0;
-    if (!this.pointerLock.isLocked && !hasTouchMove && !hasTouchLook) return;
 
-    const delta = this._clock.getDelta();
-    const speed = this.moveSpeed * delta;
-
-    // Calculate desired movement
+    // Build base movement direction from keyboard + touch before early exits.
     this._direction.set(0, 0, 0);
     if (this._keys.forward) this._direction.z -= 1;
     if (this._keys.backward) this._direction.z += 1;
@@ -121,11 +132,16 @@ export class FPSControls {
     if (this._touchMoveX) this._direction.x += this._touchMoveX;
     if (this._touchMoveZ) this._direction.z += this._touchMoveZ;
 
+    const hasMovement = this._direction.lengthSq() > 0;
+    if (!hasMovement && !hasTouchLook) return;
+
+    const delta = this._clock.getDelta();
+    const speed = this.moveSpeed * delta;
+
     if (this._direction.lengthSq() === 0 && !hasTouchLook) return;
     this._direction.normalize();
 
     // Transform direction by camera yaw (ignore pitch)
-    const euler = new THREE.Euler(0, this.camera.rotation.y, 0, 'YXZ');
     // Get camera direction projected on XZ plane
     const camDir = new THREE.Vector3();
     this.camera.getWorldDirection(camDir);

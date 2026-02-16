@@ -26,7 +26,8 @@ import { CostsView } from './CostsView.js';
 import { createLayeredStory, deserializeState, serializeState, storyName } from './AppStateIO.js';
 import { InputManager } from './InputManager.js';
 import { SelectionManager } from './SelectionManager.js';
-import { getCircuitsForPanel, computeCircuitLoadA, newCircuitForPanel, getPanelElectricalStatus } from './ElectricalCalc.js';
+import { newCircuitForPanel } from './ElectricalCalc.js';
+import { SelectionState } from './SelectionState.js';
 
 export class App {
   constructor(root, hostElement, overrides = {}) {
@@ -40,19 +41,9 @@ export class App {
     this.stories = [createLayeredStory(storyName(0))];
     this.activeStoryIndex = 0;
 
-    // Selection (state lives on App for Renderer compat, managed by SelectionManager)
-    this.selectedWall = null;
-    this.selectedFloor = null;
-    this.selectedDoor = null;
-    this.selectedWindow = null;
-    this.selectedStair = null;
-    this.selectedLabel = null;
-    this.selectedWire = null;
-    this.selectedPanel = null;
-    this.selectedElectricalSymbol = null;
-    this.selectedPipe = null;
-    this.selectedPlumbingSymbol = null;
-    this.selectedFurniture = null;
+    // Selection state (alias props on app: selectedWall, selectedDoor...).
+    this.selectionState = new SelectionState();
+    this.selectionState.bindTarget(this);
 
     // View
     this.zoom = 1;
@@ -441,6 +432,7 @@ export class App {
     const { sx, sy } = this.input._getCanvasCoords(e);
     const world = this.input.screenToWorld(sx, sy);
     const snapped = this.input._snap(world.x, world.y);
+    this.mouseWorld = snapped;
 
     switch (this.activeTool) {
       case 'wall':
@@ -677,9 +669,6 @@ export class App {
   }
 
   // ── Electrical Panel Operations ─────────────
-  _getCircuitsForPanel(panelId) { return getCircuitsForPanel(this.circuits, panelId); }
-  _getPanelElectricalStatus(panelId) { return getPanelElectricalStatus(this.panels, this.circuits, this.electricalSymbols, panelId); }
-
   _addPanelAt(wx, wy) {
     this._pushHistory();
     const next = this.panels.length + 1;
@@ -1198,6 +1187,15 @@ export class App {
 
   // ── Undo / Redo ─────────────────────────────
   _undo() {
+    // Cancel active drawing before undoing history
+    if (this.isDrawing || this.polylinePoints.length > 0) {
+      this.isDrawing = false;
+      this.drawStart = null;
+      this.polylinePoints = [];
+      this._status('Cancelled');
+      this._render();
+      return;
+    }
     const s = this.history.undo(this._getState());
     if (s) { this._setState(s); this._syncSelection(); this._updateGhost(); this._status('Undone'); this._render(); }
     this._syncUndoRedo();

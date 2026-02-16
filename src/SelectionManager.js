@@ -9,21 +9,7 @@ import {
 } from './config.js';
 import { Geom } from './geometry.js';
 import { getCircuitsForPanel, getPanelElectricalStatus } from './ElectricalCalc.js';
-
-const SELECTABLE_FIELDS = [
-  'selectedWall',
-  'selectedFloor',
-  'selectedDoor',
-  'selectedWindow',
-  'selectedStair',
-  'selectedLabel',
-  'selectedWire',
-  'selectedPanel',
-  'selectedElectricalSymbol',
-  'selectedPipe',
-  'selectedPlumbingSymbol',
-  'selectedFurniture',
-];
+import { SELECTION_ALIASES } from './SelectionState.js';
 
 export class SelectionManager {
   constructor(app) {
@@ -33,7 +19,13 @@ export class SelectionManager {
   // ── Clear ────────────────────────────────────
   clear() {
     const app = this.app;
-    for (const f of SELECTABLE_FIELDS) app[f] = null;
+    if (app.selectionState && typeof app.selectionState.clear === 'function') {
+      app.selectionState.clear();
+    } else {
+      for (const alias of SELECTION_ALIASES) {
+        app[alias] = null;
+      }
+    }
     app._labelEditActive = false;
   }
 

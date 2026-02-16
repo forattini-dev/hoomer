@@ -1047,8 +1047,8 @@ main {
 @media (max-width: 1280px), (pointer: coarse), (hover: none) {
   :host {
     --panel-w: 100%;
-    --touch-target: 44px;
-    --toolbar-h: 48px;
+    --touch-target: 40px;
+    --toolbar-h: 44px;
     --statusbar-h: 26px;
   }
 
@@ -1125,7 +1125,7 @@ main {
   #tools-panel {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: 8px;
     overflow-x: auto;
     overflow-y: hidden;
     border-bottom: 1px solid var(--border);
@@ -1133,8 +1133,12 @@ main {
     width: 100%;
     max-height: 112px;
     min-height: var(--touch-target);
-    padding: 6px 10px;
-    padding-bottom: 8px;
+    padding: 4px 10px 6px;
+    padding-bottom: 6px;
+  }
+
+  #tools-panel .panel-title {
+    display: none;
   }
 
   #tools-panel .tool-group {
@@ -1184,6 +1188,12 @@ main {
   #tools-panel .panel-title.tools-snap-title,
   #tools-panel .tools-snap-group {
     display: none;
+  }
+
+  #story-layer-row {
+    gap: 4px;
+    padding-inline: 4px;
+    align-items: stretch;
   }
 
   #canvas-container {
@@ -1302,7 +1312,7 @@ main {
   :host {
     --toolbar-h: 44px;
     --statusbar-h: 26px;
-    --touch-target: 44px;
+    --touch-target: 40px;
   }
 
   #creative-toolbar,
@@ -1311,10 +1321,14 @@ main {
     padding-inline: 6px;
   }
 
+  #story-layer-row {
+    gap: 3px;
+  }
+
   #tools-panel {
-    max-height: 100px;
-    gap: 8px;
-    padding: 5px 8px;
+    max-height: 96px;
+    gap: 6px;
+    padding: 4px 8px 6px;
   }
 
   #tools-panel .tool-group-header {
@@ -1352,7 +1366,19 @@ main {
 @media (max-width: 768px) and (orientation: portrait) {
   :host {
     --toolbar-h: 44px;
-    --touch-target: 44px;
+    --touch-target: 38px;
+  }
+
+  #creative-toolbar {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .toolbar-left,
+  .toolbar-right,
+  .tab-bar-left,
+  .tab-bar-right {
+    gap: 6px;
   }
 
   #tools-panel {

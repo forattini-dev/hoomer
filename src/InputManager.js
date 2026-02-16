@@ -229,9 +229,22 @@ export class InputManager {
 
   _onPointerMove(e) {
     if (this.app.is3DMode) return;
-    e.preventDefault();
-    if (!this._pointers.has(e.pointerId)) return;
 
+    if (!this._pointers.has(e.pointerId)) {
+      // Hover move (pointer not down) — update cursor/snap/preview within canvas
+      const rect = this.canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      if (sx >= 0 && sy >= 0 && sx <= rect.width && sy <= rect.height) {
+        const world = this.screenToWorld(sx, sy);
+        const snapped = this._snap(world.x, world.y);
+        this.app.mouseWorld = snapped;
+        this.app._handleCanvasMove(world, snapped);
+      }
+      return;
+    }
+
+    e.preventDefault();
     const rect = this.canvas.getBoundingClientRect();
     this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -343,7 +356,9 @@ export class InputManager {
       this.app._render();
     }
 
-    if (e.key === 'Delete' || e.key === 'Backspace') this.app._deleteSelected();
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput) {
+      this.app._deleteSelected();
+    }
 
     if (!e.ctrlKey && !e.altKey && !e.metaKey && !isInput) {
       if (e.key === '1') this.app._switchLayer('structure');
