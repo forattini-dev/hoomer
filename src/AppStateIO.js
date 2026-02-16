@@ -81,6 +81,12 @@ function serializeStory(story) {
   const plumbing = story?.layers?.plumbing || {};
 
   const structureWalls = asArray(structure.walls);
+  const wallIndexByRef = new Map();
+  for (let i = 0; i < structureWalls.length; i += 1) {
+    wallIndexByRef.set(structureWalls[i], i);
+  }
+  const wallIndexOf = (wall) => (wallIndexByRef.has(wall) ? wallIndexByRef.get(wall) : -1);
+
   return {
     name: story?.name,
     activeLayer: story?.activeLayer || 'structure',
@@ -90,8 +96,8 @@ function serializeStory(story) {
       structure: {
         visible: structure.visible !== false,
         walls: structureWalls.map((wall) => wall.serialize()),
-        doors: asArray(structure.doors).map((door) => door.serialize(structureWalls.indexOf(door.wall))),
-        windows: asArray(structure.windows).map((windowItem) => windowItem.serialize(structureWalls.indexOf(windowItem.wall))),
+        doors: asArray(structure.doors).map((door) => door.serialize(wallIndexOf(door.wall))),
+        windows: asArray(structure.windows).map((windowItem) => windowItem.serialize(wallIndexOf(windowItem.wall))),
         floors: asArray(structure.floors).map((floor) => floor.serialize()),
         stairs: asArray(structure.stairs).map((stair) => stair.serialize()),
         labels: asArray(structure.labels).map((label) => label.serialize()),
@@ -231,4 +237,46 @@ function deserializeFurnitureLayer(layer) {
     visible: layer.visible !== false,
     items: parseOrEmptyLayerItems(layer, 'items', (item) => Furniture.fromData(item)),
   };
+}
+
+export const PROJECT_SCHEMA_VERSION = 1;
+export const PROJECT_FILE_META_KEY = '__ffplan_meta';
+export const PROJECT_FORMAT = 'ffplan';
+
+function getNumber(value, fallback) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+export function buildProjectPayload(app) {
+  const now = Date.now();
+  const appMeta = app?.projectMeta && typeof app.projectMeta === 'object'
+    ? app.projectMeta
+    : {};
+  const createdAt = getNumber(appMeta.createdAt, now);
+
+  return {
+    ...serializeState(app),
+    terrainWidth: getNumber(app?.terrainWidth, CONFIG.DEFAULT_TERRAIN_WIDTH),
+    terrainHeight: getNumber(app?.terrainHeight, CONFIG.DEFAULT_TERRAIN_HEIGHT),
+    axisOrigin: typeof app?.axisOrigin === 'string' ? app.axisOrigin : 'bottom-left',
+    showTerrain: app?.showTerrain !== false,
+    [PROJECT_FILE_META_KEY]: {
+      format: PROJECT_FORMAT,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      projectId: app?.projectId || appMeta.projectId || 'default',
+      projectName: app?.projectName || appMeta.projectName || 'Untitled Project',
+      createdAt,
+      updatedAt: now,
+    },
+  };
+}
+
+export function parseProjectPayload(rawState) {
+  if (!rawState || typeof rawState !== 'object') return { state: null, meta: null };
+  if (!Object.prototype.hasOwnProperty.call(rawState, PROJECT_FILE_META_KEY)) {
+    return { state: rawState, meta: null };
+  }
+  const { [PROJECT_FILE_META_KEY]: meta, ...state } = rawState;
+  return { state, meta };
 }

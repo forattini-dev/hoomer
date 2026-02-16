@@ -228,78 +228,50 @@ select {
 #btn-remove-story:hover:not(:disabled) { background: var(--danger); color: #fff; border-color: var(--danger); }
 #btn-remove-story:disabled { opacity: 0.3; cursor: default; }
 
-/* ── Layer Bar ──────────────────────────────── */
-#layer-bar {
-  height: 30px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+/* ── Layer FAB ───────────────────────────────── */
+#layer-fab {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
   display: flex;
-  align-items: center;
-  padding: 0 12px;
-  gap: 4px;
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 20;
+  pointer-events: auto;
 }
 
-#layer-tabs {
-  display: flex;
-  gap: 3px;
-  flex: 1;
-}
-
-.layer-tab {
-  padding: 3px 12px;
-  background: var(--bg);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.layer-tab:hover { color: var(--text); border-color: var(--text-muted); }
-.layer-tab.active {
-  color: #fff;
-  border-color: transparent;
-}
-
-.layer-tab .layer-dot {
-  width: 8px;
-  height: 8px;
+.fab-layer-btn {
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.layer-tab .layer-icon {
-  width: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  line-height: 1;
-  opacity: 0.95;
-}
-
-.layer-tab .layer-vis {
-  width: 14px;
-  height: 14px;
+  border: 2px solid transparent;
+  background: var(--bg-panel);
+  color: var(--text);
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  opacity: 0.7;
-  cursor: pointer;
-  border-radius: 2px;
+  font-size: 18px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s, background 0.15s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
-.layer-tab .layer-vis:hover { opacity: 1; background: rgba(0,0,0,0.1); }
-.layer-tab .layer-vis.hidden { opacity: 0.3; }
 
-.layer-label-short {
-  display: none;
+.fab-layer-btn:hover {
+  transform: scale(1.12);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+}
+
+.fab-layer-btn.active {
+  background: var(--layer-color);
+  border-color: var(--layer-color);
+  color: #fff;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--layer-color) 50%, transparent);
+}
+
+.fab-layer-btn.layer-hidden {
+  opacity: 0.35;
 }
 
 /* ── Main Layout ────────────────────────────── */
@@ -931,8 +903,8 @@ main {
 :host([data-mode="3d"]) #tools-panel,
 :host([data-mode="3d"]) #properties-panel { display: none !important; }
 
-:host([data-mode="3d"]) #story-bar,
-:host([data-mode="3d"]) #layer-bar { display: none !important; }
+:host([data-mode="3d"]) #story-bar { display: none !important; }
+:host([data-mode="3d"]) #layer-fab { display: none !important; }
 
 #btn-3d.active {
   background: var(--accent);
@@ -1085,15 +1057,6 @@ main {
     display: flex;
   }
 
-  #story-layer-row #layer-bar {
-    flex: 1 1 auto;
-    min-width: 0;
-    height: auto;
-    border-bottom: 0;
-    padding: 0 8px 0 0;
-    display: flex;
-  }
-
   #story-layer-row #story-tabs {
     overflow-x: auto;
     white-space: nowrap;
@@ -1201,51 +1164,6 @@ main {
     min-height: 32vh;
   }
 
-  #layer-bar {
-    overflow-x: auto;
-    padding-right: 8px;
-  }
-
-  #layer-tabs {
-    width: max-content;
-    gap: 4px;
-    min-height: var(--touch-target);
-    overflow-x: auto;
-    padding-bottom: 2px;
-    flex-wrap: nowrap;
-  }
-
-  .layer-tab {
-    width: var(--touch-target);
-    min-width: var(--touch-target);
-    min-height: var(--touch-target);
-    padding: 0;
-    border-radius: 10px;
-    justify-content: center;
-    gap: 0;
-  }
-
-  .layer-tab .layer-icon {
-    font-size: 15px;
-    width: 15px;
-  }
-
-  .layer-tab .layer-label-long {
-    display: none;
-  }
-
-  .layer-label-short {
-    display: none;
-  }
-
-  .layer-tab .layer-vis {
-    display: none;
-  }
-
-  .layer-tab .layer-dot {
-    display: none;
-  }
-
   .top-tab,
   .story-tab,
   #creative-toolbar button,
@@ -1260,10 +1178,6 @@ main {
     min-height: var(--touch-target);
     min-width: var(--touch-target);
     line-height: 1;
-  }
-
-  .layer-tab {
-    min-height: var(--touch-target);
   }
 
   .tool-btn,
@@ -1295,14 +1209,13 @@ main {
   #share-encrypt,
   .selection-prop-select,
   #elec-circuit-select,
-  #sel-elec-circuit-select,
+  #sel-electrical-circuit-select,
   .cost-price-input {
     min-height: var(--touch-target);
   }
 
   #tab-bar-tabs,
-  #story-tabs,
-  #layer-tabs {
+  #story-tabs {
     min-height: var(--touch-target);
     align-items: center;
   }
@@ -1316,8 +1229,7 @@ main {
   }
 
   #creative-toolbar,
-  #story-bar,
-  #layer-bar {
+  #story-bar {
     padding-inline: 6px;
   }
 
@@ -1347,20 +1259,6 @@ main {
     height: 18px;
   }
 
-  #layer-tabs {
-    gap: 3px;
-  }
-
-  .layer-tab {
-    width: var(--touch-target);
-    min-width: var(--touch-target);
-    min-height: var(--touch-target);
-  }
-
-  .layer-tab .layer-icon {
-    font-size: 14px;
-    width: 14px;
-  }
 }
 
 @media (max-width: 768px) and (orientation: portrait) {
@@ -1408,16 +1306,12 @@ main {
     gap: 5px;
   }
 
-  #layer-tabs {
-    gap: 4px;
-  }
+}
 
-  .layer-tab {
-    width: var(--touch-target);
-    min-width: var(--touch-target);
-    min-height: var(--touch-target);
-    border-radius: 9px;
-  }
+/* ── FAB Responsive ──────────────────────────── */
+@media (max-width: 500px) {
+  .fab-layer-btn { width: 38px; height: 38px; font-size: 15px; }
+  #layer-fab { bottom: 12px; right: 12px; gap: 6px; }
 }
 
 @media (max-width: 1024px) and (orientation: landscape) {

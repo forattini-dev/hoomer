@@ -9,12 +9,15 @@
     "watch": "esbuild src/index.js --bundle --outfile=dist/app.js --sourcemap --format=iife --loader:.css=text --watch",
     "serve": "live-server --open=/test/ --watch=dist,test --no-css-inject",
     "serve:pages": "pnpm build:pages && live-server --open=/dist/ --watch=dist --no-css-inject",
-    "dev": "concurrently -k -n build,serve -c cyan,green \"pnpm watch\" \"pnpm serve\""
+    "dev": "concurrently -k -n build,serve -c cyan,green \"pnpm watch\" \"pnpm serve\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "esbuild": "^0.27.3",
-    "live-server": "^1.2.2"
+    "live-server": "^1.2.2",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "three": "^0.182.0"

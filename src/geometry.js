@@ -1,16 +1,43 @@
+/** @typedef {{ x: number, y: number }} Point */
+
+/** @typedef {{ wall: import('./Wall.js').Wall, end: 'start'|'end' }} WallConnection */
+
+/** @typedef {{ x: number, y: number, connections: WallConnection[] }} EndpointJoint */
+
 export const Geom = {
+  /**
+   * Euclidean distance between two points.
+   * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+   * @returns {number}
+   */
   dist(x1, y1, x2, y2) {
     return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
   },
 
+  /**
+   * Angle in radians from (x1,y1) to (x2,y2).
+   * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+   * @returns {number}
+   */
   angle(x1, y1, x2, y2) {
     return Math.atan2(y2 - y1, x2 - x1);
   },
 
+  /**
+   * Angle in degrees from (x1,y1) to (x2,y2).
+   * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+   * @returns {number}
+   */
   angleDeg(x1, y1, x2, y2) {
     return (this.angle(x1, y1, x2, y2) * 180) / Math.PI;
   },
 
+  /**
+   * Snap angle to nearest multiple of snapDeg, preserving distance.
+   * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+   * @param {number} snapDeg
+   * @returns {Point}
+   */
   snapAngle(x1, y1, x2, y2, snapDeg) {
     const a = this.angle(x1, y1, x2, y2);
     const d = this.dist(x1, y1, x2, y2);
@@ -22,6 +49,11 @@ export const Geom = {
     };
   },
 
+  /**
+   * Snap coordinates to nearest grid intersection.
+   * @param {number} x @param {number} y @param {number} gridSize
+   * @returns {Point}
+   */
   snapToGrid(x, y, gridSize) {
     return {
       x: Math.round(x / gridSize) * gridSize,
@@ -29,6 +61,12 @@ export const Geom = {
     };
   },
 
+  /**
+   * Shortest distance from point to line segment.
+   * @param {number} px @param {number} py
+   * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+   * @returns {number}
+   */
   pointToSegmentDist(px, py, x1, y1, x2, y2) {
     const dx = x2 - x1;
     const dy = y2 - y1;
@@ -39,6 +77,12 @@ export const Geom = {
     return this.dist(px, py, x1 + t * dx, y1 + t * dy);
   },
 
+  /**
+   * Four corner points of a wall rectangle.
+   * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+   * @param {number} thickness
+   * @returns {Point[]}
+   */
   wallRect(x1, y1, x2, y2, thickness) {
     const angle = this.angle(x1, y1, x2, y2);
     const perpAngle = angle + Math.PI / 2;
@@ -53,6 +97,11 @@ export const Geom = {
     ];
   },
 
+  /**
+   * Ray-casting point-in-polygon test.
+   * @param {number} px @param {number} py @param {Point[]} polygon
+   * @returns {boolean}
+   */
   pointInPolygon(px, py, polygon) {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -65,6 +114,12 @@ export const Geom = {
     return inside;
   },
 
+  /**
+   * Group wall endpoints within tolerance into joints.
+   * @param {Array<{x1:number, y1:number, x2:number, y2:number}>} walls
+   * @param {number} [tolerance=0.5]
+   * @returns {Map<string, EndpointJoint>}
+   */
   buildEndpointMap(walls, tolerance = 0.5) {
     const map = new Map();
     const key = (x, y) => {
@@ -84,6 +139,11 @@ export const Geom = {
     return map;
   },
 
+  /**
+   * Compute fill polygon for a wall corner joint.
+   * @param {EndpointJoint} joint
+   * @returns {Point[]|null}
+   */
   cornerFillPolygon(joint) {
     if (joint.connections.length < 2) return null;
     const corners = [];
@@ -101,6 +161,11 @@ export const Geom = {
     return corners;
   },
 
+  /**
+   * Format centimeter value as meters string (e.g. "1.5m").
+   * @param {number} cm
+   * @returns {string}
+   */
   formatLength(cm) {
     const m = cm / 100;
     const rounded = Math.round(m * 100) / 100;

@@ -64,9 +64,9 @@ const ALL_TOOL_PROP_PANEL_IDS = Object.freeze([
   'sel-label-props',
   'sel-panel-props',
   'sel-wire-props',
-  'sel-elec-symbol-props',
+  'sel-electrical-symbol-props',
   'sel-pipe-props',
-  'sel-plumb-symbol-props',
+  'sel-plumbing-symbol-props',
   'sel-furniture-props',
 ]);
 

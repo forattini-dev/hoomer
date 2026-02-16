@@ -359,16 +359,16 @@ export class SelectionManager {
           b.classList.toggle('active', parseFloat(b.dataset.value) === app.selectedWire.gauge));
       }
     } else if (app.selectedElectricalSymbol) {
-      const ep = $('sel-elec-symbol-props');
+      const ep = $('sel-electrical-symbol-props');
       if (ep) {
         ep.style.display = '';
-        $('sel-elec-symbol-type').textContent = CONFIG.ELECTRICAL_SYMBOL_LABELS[app.selectedElectricalSymbol.symbolType] || app.selectedElectricalSymbol.symbolType;
+        $('sel-electrical-symbol-type').textContent = CONFIG.ELECTRICAL_SYMBOL_LABELS[app.selectedElectricalSymbol.symbolType] || app.selectedElectricalSymbol.symbolType;
         const circuit = app.circuits.find(c => c.id === app.selectedElectricalSymbol.circuitId);
-        $('sel-elec-symbol-circuit').textContent = circuit ? `${circuit.name}` : 'None';
+        $('sel-electrical-symbol-circuit').textContent = circuit ? `${circuit.name}` : 'None';
         const load = Math.max(0.1, Number(app.selectedElectricalSymbol.amperageA) || CONFIG.DEFAULT_SYMBOL_AMPERAGE_A);
-        $('sel-elec-load-a').value = String(load);
-        this.fillCircuitSelect('sel-elec-circuit-select', app.selectedElectricalSymbol.circuitId);
-        $$('#sel-elec-symbol-rotation-group .prop-btn').forEach(b =>
+        $('sel-electrical-load-a').value = String(load);
+        this.fillCircuitSelect('sel-electrical-circuit-select', app.selectedElectricalSymbol.circuitId);
+        $$('#sel-electrical-symbol-rotation-group .prop-btn').forEach(b =>
           b.classList.toggle('active', parseInt(b.dataset.value) === app.selectedElectricalSymbol.rotation));
       }
     } else if (app.selectedPipe) {
@@ -382,11 +382,11 @@ export class SelectionManager {
           b.classList.toggle('active', parseInt(b.dataset.value) === (app.selectedPipe.flowDir || 1)));
       }
     } else if (app.selectedPlumbingSymbol) {
-      const pp = $('sel-plumb-symbol-props');
+      const pp = $('sel-plumbing-symbol-props');
       if (pp) {
         pp.style.display = '';
-        $('sel-plumb-symbol-type').textContent = CONFIG.PLUMBING_SYMBOL_LABELS[app.selectedPlumbingSymbol.symbolType] || app.selectedPlumbingSymbol.symbolType;
-        $$('#sel-plumb-symbol-rotation-group .prop-btn').forEach(b =>
+        $('sel-plumbing-symbol-type').textContent = CONFIG.PLUMBING_SYMBOL_LABELS[app.selectedPlumbingSymbol.symbolType] || app.selectedPlumbingSymbol.symbolType;
+        $$('#sel-plumbing-symbol-rotation-group .prop-btn').forEach(b =>
           b.classList.toggle('active', parseInt(b.dataset.value) === app.selectedPlumbingSymbol.rotation));
       }
     } else if (app.selectedFurniture) {
@@ -434,7 +434,7 @@ export class SelectionManager {
       this.fillCircuitSelect('elec-circuit-select', app.electricalCircuitId);
     }
     if (app.selectedElectricalSymbol) {
-      this.fillCircuitSelect('sel-elec-circuit-select', app.selectedElectricalSymbol.circuitId);
+      this.fillCircuitSelect('sel-electrical-circuit-select', app.selectedElectricalSymbol.circuitId);
     }
   }
 

@@ -3,6 +3,11 @@
 
 let counter = 0;
 
+/**
+ * Extract numeric portion from an ID (plain number or "prefix_123").
+ * @param {unknown} value
+ * @returns {number|null}
+ */
 function extractNumericId(value) {
   if (Number.isFinite(value) && Number.isInteger(value)) {
     return value;
@@ -21,10 +26,19 @@ function extractNumericId(value) {
   return Number.isFinite(parsed) && Number.isInteger(parsed) ? parsed : null;
 }
 
+/**
+ * Reset the global counter. Positive integers seed at that value.
+ * @param {number} [seed=0]
+ */
 export function resetCounter(seed = 0) {
   counter = Number.isFinite(seed) && Number.isInteger(seed) && seed > 0 ? seed : 0;
 }
 
+/**
+ * Scan serialized state for max existing ID and seed counter accordingly.
+ * @param {object|null} state
+ * @returns {number} The seed value set.
+ */
 export function seedFromSerializedState(state) {
   let maxId = 0;
   let missingIdCount = 0;
@@ -73,10 +87,19 @@ export function seedFromSerializedState(state) {
   return counter;
 }
 
+/**
+ * Get next sequential ID.
+ * @returns {number}
+ */
 export function nextId() {
   return ++counter;
 }
 
+/**
+ * Get next sequential ID with a string prefix (e.g. "wall_42").
+ * @param {string} prefix
+ * @returns {string}
+ */
 export function nextPrefixedId(prefix) {
   return `${prefix}_${++counter}`;
 }

@@ -186,7 +186,7 @@ export class InputManager {
       this.isPanning = false;
       this.canvas.style.cursor = 'crosshair';
     }
-    if (this.app.isDragging) this.app._finishDrag();
+    if (this.app.drag.isDragging) this.app._finishDrag();
   }
 
   // ── Pointer Handlers (touch + mouse unified) ─
@@ -212,10 +212,10 @@ export class InputManager {
         startZoom: this.app.zoom,
       };
       this.isPanning = false;
-      this.app.isDragging = false;
-      this.app._dragFurniture = null;
-      this.app.dragWall = null;
-      this.app._dragFurnitureOffset = null;
+      this.app.drag.isDragging = false;
+      this.app.drag._dragFurniture = null;
+      this.app.drag.dragWall = null;
+      this.app.drag._dragFurnitureOffset = null;
       return;
     }
 
@@ -298,7 +298,7 @@ export class InputManager {
         this.isPanning = false;
         this.canvas.style.cursor = 'crosshair';
       }
-      if (this.app.isDragging) this.app._finishDrag();
+      if (this.app.drag.isDragging) this.app._finishDrag();
     }
   }
 

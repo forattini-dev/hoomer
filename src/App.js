@@ -5,35 +5,37 @@ import {
   ALL_TOOL_PROP_PANEL_IDS,
 } from './config.js';
 import { Geom } from './geometry.js';
-import { Wall } from './Wall.js';
-import { Floor } from './Floor.js';
-import { Door } from './Door.js';
-import { Window } from './Window.js';
-import { Stair } from './Stair.js';
-import { Label } from './Label.js';
-import { Wire } from './Wire.js';
-import { ElectricalPanel } from './ElectricalPanel.js';
-import { ElectricalSymbol } from './ElectricalSymbol.js';
-import { Pipe } from './Pipe.js';
-import { PlumbingSymbol } from './PlumbingSymbol.js';
-import { Furniture } from './Furniture.js';
 import { History } from './History.js';
 import { Renderer } from './Renderer.js';
-import { Viewer3D } from './Viewer3D.js';
-import { ShareManager } from './ShareManager.js';
-import { exportPNG, exportJSON } from './ExportManager.js';
 import { CostsView } from './CostsView.js';
-import { createLayeredStory, deserializeState, serializeState, storyName } from './AppStateIO.js';
+import {
+  createLayeredStory,
+  deserializeState,
+  serializeState,
+  storyName,
+  buildProjectPayload,
+  parseProjectPayload,
+  PROJECT_FORMAT,
+  PROJECT_SCHEMA_VERSION,
+  PROJECT_FILE_META_KEY,
+} from './AppStateIO.js';
 import { InputManager } from './InputManager.js';
 import { SelectionManager } from './SelectionManager.js';
-import { newCircuitForPanel } from './ElectricalCalc.js';
 import { SelectionState } from './SelectionState.js';
+import { EventBus } from './EventBus.js';
+import { ToolActions } from './ToolActions.js';
+import { DragManager } from './DragManager.js';
+import { ThreeDController } from './ThreeDController.js';
+import { ProjectIO } from './ProjectIO.js';
+import { bindUI } from './UIBindings.js';
+import { LocalProjectStore } from './LocalProjectStore.js';
+import { analyzePlan, formatPlanAdvice } from './PlanAdvisor.js';
 
 export class App {
   constructor(root, hostElement, overrides = {}) {
     this.root = root;
     this.hostElement = hostElement;
-
+    this.bus = new EventBus();
     this.canvas = this.$('main-canvas');
     this.renderer = new Renderer(this.canvas);
 
@@ -88,6 +90,7 @@ export class App {
     // Furniture defaults
     this.furnitureType = 'chair';
     this.furnitureRotation = 0;
+    this.planReview = null;
 
     // Floor draw mode
     this.floorMode = 'auto'; // 'auto' | 'draw'
@@ -101,6 +104,16 @@ export class App {
     this.showTerrain = true;
     this.axisOrigin = 'bottom-left';
 
+    this.projectId = 'default';
+    this.projectMeta = {
+      format: PROJECT_FORMAT,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      projectId: this.projectId,
+      projectName: 'Untitled Project',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
     // Apply overrides
     for (const [key, val] of Object.entries(overrides)) {
       if (key in this) this[key] = val;
@@ -111,13 +124,6 @@ export class App {
     this.drawStart = null;
     this.mouseWorld = { x: 0, y: 0 };
     this.hoveredWall = null;
-
-    // Dragging (select tool)
-    this.isDragging = false;
-    this.dragType = null;
-    this.dragWall = null;
-    this.dragOffset = null;
-    this.dragStartState = null;
 
     // Snap
     this.snapGrid = true;
@@ -134,15 +140,6 @@ export class App {
     this.projectName = 'Untitled Project';
     this.costsView = new CostsView(sel => this.$(sel), msg => this._status(msg));
 
-    // 3D state
-    this.viewer3D = null;
-    this.is3DMode = false;
-    this._mobileNavMove = { up: 0, down: 0, left: 0, right: 0 };
-    this._mobileLookPointerId = null;
-    this._mobileLookStart = null;
-    this._mobileWalkMovePointers = new Map();
-    this._mobileNavBoundHandlers = [];
-
     // History
     this.history = new History();
 
@@ -155,9 +152,23 @@ export class App {
     // Selection management (select, erase, delete, UI sync)
     this.selection = new SelectionManager(this);
 
+    // Tool actions (entity creation)
+    this.tools = new ToolActions(this);
+
+    // Drag management (wall & furniture dragging)
+    this.drag = new DragManager(this);
+
+    // 3D view management
+    this.threeD = new ThreeDController(this);
+
+    // Project I/O (import/export, share)
+    this.projectIO = new ProjectIO(this);
+    this.storage = new LocalProjectStore({ projectKey: this.projectId });
+    this._persistTimer = null;
+
     this.renderer.resize();
     this._bindUI();
-    this._bindMobileWalkControls();
+    this.threeD.bindMobileWalkControls();
     this._syncStoryTabs();
     this._syncLayerTabs();
     this._syncToolPalette();
@@ -165,8 +176,7 @@ export class App {
     this._centerView();
     this._render();
 
-    // Detect shared project in URL hash
-    queueMicrotask(() => this._loadFromHash());
+    queueMicrotask(() => this._initializeProjectState());
   }
 
   // ── DOM helpers ─────────────────────────────
@@ -213,6 +223,10 @@ export class App {
   get furnitureItems() { return this.currentStory.layers.furniture.items; }
   set furnitureItems(v) { this.currentStory.layers.furniture.items = v; }
 
+  // ── 3D state proxies ───────────────────────
+  get is3DMode() { return this.threeD.is3DMode; }
+  get viewer3D() { return this.threeD.viewer3D; }
+
   // ── Coordinates ─────────────────────────────
   _centerView() {
     if (this.axisOrigin === 'bottom-left') {
@@ -231,6 +245,24 @@ export class App {
     return serializeState(this);
   }
 
+  _getPersistPayload() {
+    return buildProjectPayload(this);
+  }
+
+  _setProjectMeta(rawMeta = {}) {
+    const nextMeta = {
+      ...this.projectMeta,
+      ...rawMeta,
+      format: PROJECT_FORMAT,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+    };
+    const createdAt = Number(nextMeta.createdAt);
+    const updatedAt = Number(nextMeta.updatedAt);
+    if (Number.isFinite(createdAt)) this.projectMeta.createdAt = createdAt;
+    if (Number.isFinite(updatedAt)) this.projectMeta.updatedAt = updatedAt;
+    this.projectMeta = { ...this.projectMeta, ...nextMeta };
+  }
+
   _setUnitPrices(prices) {
     if (prices && typeof prices === 'object' && !Array.isArray(prices)) {
       this.costsView.unitPrices = { ...prices };
@@ -246,6 +278,14 @@ export class App {
     this.activeTool = normalized.activeTool;
     this.projectName = normalized.projectName;
     this._setUnitPrices(normalized.unitPrices);
+    if (state && typeof state === 'object') {
+      const terrainWidth = Number(state.terrainWidth);
+      const terrainHeight = Number(state.terrainHeight);
+      if (Number.isFinite(terrainWidth) && terrainWidth > 0) this.terrainWidth = terrainWidth;
+      if (Number.isFinite(terrainHeight) && terrainHeight > 0) this.terrainHeight = terrainHeight;
+      if (typeof state.axisOrigin === 'string') this.axisOrigin = state.axisOrigin;
+      if (typeof state.showTerrain === 'boolean') this.showTerrain = state.showTerrain;
+    }
     this._clearSelection();
     this._syncStoryTabs();
     this._syncLayerTabs();
@@ -269,8 +309,79 @@ export class App {
   }
 
   _pushHistory() {
-    this.history.push(this._getState());
+    this.history.push(this._getPersistPayload());
     this._syncUndoRedo();
+    this._schedulePersist();
+  }
+
+  async _initializeProjectState() {
+    const hash = window.location.hash;
+    if (hash && hash.length > 2 && (hash.startsWith('#P') || hash.startsWith('#E'))) {
+      await this.projectIO.loadFromHash();
+      return;
+    }
+
+    const saved = await this.storage.load();
+    if (saved) {
+      const applied = this.applyProjectPayload(saved, { pushHistory: false, silent: true });
+      if (applied) {
+        this._status('Recovered last project');
+      }
+    }
+    this._schedulePersist();
+  }
+
+  applyProjectPayload(payload, { pushHistory = true, silent = false } = {}) {
+    const normalized = parseProjectPayload(payload);
+    if (!normalized.state) return false;
+    if (normalized.meta) {
+      this._setProjectMeta(normalized.meta);
+    } else {
+      this._setProjectMeta({ projectName: normalized.state?.projectName });
+    }
+    if (pushHistory) this._pushHistory();
+    this._setState(normalized.state);
+    this._updateGhost();
+    this._syncUndoRedo();
+    if (!silent) this._status('Project loaded');
+    this._centerView();
+    this._render();
+    return true;
+  }
+
+  _schedulePersist() {
+    if (this._persistTimer) clearTimeout(this._persistTimer);
+    this._persistTimer = setTimeout(() => {
+      this._persistProject();
+    }, 450);
+  }
+
+  async _persistProject() {
+    try {
+      const payload = this._getPersistPayload();
+      await this.storage.save(payload);
+      this._setProjectMeta(payload?.[PROJECT_FILE_META_KEY] || {});
+    } catch {
+      // silent: best-effort local persistence
+    }
+  }
+
+  runPlanReview() {
+    const review = analyzePlan(this);
+    this.planReview = review;
+    this._renderPlanReview(review);
+    this._status('Plan check completed');
+    return review;
+  }
+
+  _renderPlanReview(review = this.planReview) {
+    const out = this.$('plan-review-result');
+    if (!out) return;
+    if (!review) {
+      out.textContent = 'Execute a análise para gerar insights locais (modo offline).';
+      return;
+    }
+    out.textContent = formatPlanAdvice(review);
   }
 
   _clearSelection() { this.selection.clear(); }
@@ -317,45 +428,38 @@ export class App {
   }
 
   _syncLayerTabs() {
-    const container = this.$('layer-tabs');
+    const container = this.$('layer-fab');
     if (!container) return;
     container.innerHTML = '';
     for (let i = 0; i < CONFIG.LAYERS.length; i++) {
       const layerName = CONFIG.LAYERS[i];
       const color = CONFIG.LAYER_COLORS[layerName];
       const meta = CONFIG.LAYER_META[layerName] || {};
-      const label = meta.label || layerName;
-      const shortLabel = meta.shortLabel || label.slice(0, 1).toUpperCase();
       const icon = meta.icon || '';
+      const label = meta.label || layerName;
       const isActive = this.activeLayer === layerName;
       const isVisible = this.currentStory.layers[layerName].visible;
-      const keyNum = i + 1;
 
-      const tab = document.createElement('button');
-      tab.className = 'layer-tab' + (isActive ? ' active' : '');
-      if (isActive) tab.style.background = color;
-      tab.title = `${label} layer`;
+      const btn = document.createElement('button');
+      btn.className = 'fab-layer-btn' + (isActive ? ' active' : '');
+      btn.dataset.layer = layerName;
+      btn.title = `${label} (${i + 1})`;
+      btn.style.setProperty('--layer-color', color);
+
       if (!isVisible) {
-        tab.title = `${label} layer (hidden)`;
+        btn.classList.add('layer-hidden');
+        btn.title += ' (hidden)';
       }
 
-      tab.innerHTML =
-        `${icon ? `<span class="layer-icon">${icon}</span>` : ''}` +
-        `<span class="layer-dot" style="background:${color}"></span>` +
-        `<span class="layer-label layer-label-long">${label}</span>` +
-        `<span class="layer-label layer-label-short">${shortLabel}</span>` +
-        `<span class="layer-vis${isVisible ? '' : ' hidden'}" data-layer="${layerName}" title="Toggle visibility (${keyNum})">${isVisible ? '\u25C9' : '\u25CB'}</span>`;
-
-      tab.addEventListener('click', (e) => {
-        if (e.target.classList.contains('layer-vis')) {
-          e.stopPropagation();
+      btn.innerHTML = `<span class="fab-icon">${icon}</span>`;
+      btn.addEventListener('click', (e) => {
+        if (e.shiftKey) {
           this._toggleLayerVisibility(layerName);
-          return;
+        } else {
+          this._switchLayer(layerName);
         }
-        this._switchLayer(layerName);
       });
-
-      container.appendChild(tab);
+      container.appendChild(btn);
     }
   }
 
@@ -434,65 +538,7 @@ export class App {
     const snapped = this.input._snap(world.x, world.y);
     this.mouseWorld = snapped;
 
-    switch (this.activeTool) {
-      case 'wall':
-        if (!this.isDrawing) {
-          this.isDrawing = true;
-          this.drawStart = { x: snapped.x, y: snapped.y };
-          this._status('Click to define the wall endpoint');
-        } else {
-          this._finishWall(snapped.x, snapped.y);
-        }
-        break;
-      case 'select':
-        if (this.activeLayer === 'structure') {
-          if (this._tryStartDrag(world.x, world.y, snapped)) break;
-        } else if (this.activeLayer === 'furniture') {
-          if (this._tryStartFurnitureDrag(world.x, world.y)) break;
-        }
-        this._selectAt(world.x, world.y);
-        break;
-      case 'eraser':
-        this._eraseAt(world.x, world.y);
-        break;
-      case 'floor':
-        if (this.floorMode === 'draw') {
-          this._addFloorPoint(snapped.x, snapped.y);
-        } else {
-          this._addFloorAt(world.x, world.y);
-        }
-        break;
-      case 'door':
-        this._addDoorAt(world.x, world.y);
-        break;
-      case 'window':
-        this._addWindowAt(world.x, world.y);
-        break;
-      case 'stair':
-        this._addStairAt(snapped.x, snapped.y);
-        break;
-      case 'label':
-        this._addLabelAt(snapped.x, snapped.y);
-        break;
-      case 'wire':
-        this._addPolylinePoint(snapped.x, snapped.y);
-        break;
-      case 'panel':
-        this._addPanelAt(snapped.x, snapped.y);
-        break;
-      case 'electrical_symbol':
-        this._addElectricalSymbolAt(snapped.x, snapped.y);
-        break;
-      case 'pipe':
-        this._addPolylinePoint(snapped.x, snapped.y);
-        break;
-      case 'plumbing_symbol':
-        this._addPlumbingSymbolAt(snapped.x, snapped.y);
-        break;
-      case 'furniture_item':
-        this._addFurnitureAt(snapped.x, snapped.y);
-        break;
-    }
+    this.tools.dispatch(this.activeTool, snapped, world);
     this._render();
   }
 
@@ -501,15 +547,15 @@ export class App {
     this.mouseWorld = snapped;
     this.$('status-coords').textContent = `X: ${Math.round(snapped.x)} cm  Y: ${Math.round(snapped.y)} cm`;
 
-    if (this.isDragging && this.dragWall) {
-      this._doDrag(snapped.x, snapped.y);
+    if (this.drag.isDragging && this.drag.dragWall) {
+      this.drag.doDrag(snapped.x, snapped.y);
       this._render();
       return;
     }
 
-    if (this.isDragging && this._dragFurniture) {
-      this._dragFurniture.x = snapped.x - this._dragFurnitureOffset.dx;
-      this._dragFurniture.y = snapped.y - this._dragFurnitureOffset.dy;
+    if (this.drag.isDragging && this.drag._dragFurniture) {
+      this.drag._dragFurniture.x = snapped.x - this.drag._dragFurnitureOffset.dx;
+      this.drag._dragFurniture.y = snapped.y - this.drag._dragFurnitureOffset.dy;
       this._syncSelection();
       this._render();
       return;
@@ -543,394 +589,11 @@ export class App {
     return TOOL_SHORTCUTS_BY_LAYER[this.activeLayer];
   }
 
-  // ── Wall Operations ─────────────────────────
-  _finishWall(x2, y2) {
-    const { x: x1, y: y1 } = this.drawStart;
-    const length = Geom.dist(x1, y1, x2, y2);
-    if (length < CONFIG.MIN_WALL_LENGTH) {
-      this._status('Wall too short');
-      this.isDrawing = false;
-      this.drawStart = null;
-      return;
-    }
-    this._pushHistory();
-    this.walls.push(new Wall(x1, y1, x2, y2, this.wallThickness, this.wallMaterial));
-    this.drawStart = { x: x2, y: y2 };
-    this._status(`Wall: ${Geom.formatLength(length)} — Continue or ESC`);
-  }
-
-  // ── Door Operations ─────────────────────────
-  _addDoorAt(wx, wy) {
-    let targetWall = null;
-    for (let i = this.walls.length - 1; i >= 0; i--) {
-      if (this.walls[i].hitTest(wx, wy)) { targetWall = this.walls[i]; break; }
-    }
-    if (!targetWall) { this._status('Click on a wall to place the door'); return; }
-
-    const wallLen = targetWall.length;
-    if (wallLen < this.doorWidth) { this._status('Wall too short for this door'); return; }
-
-    const dx = targetWall.x2 - targetWall.x1;
-    const dy = targetWall.y2 - targetWall.y1;
-    const lenSq = dx * dx + dy * dy;
-    let t = ((wx - targetWall.x1) * dx + (wy - targetWall.y1) * dy) / lenSq;
-    const halfRatio = (this.doorWidth / 2) / wallLen;
-    t = Math.max(halfRatio, Math.min(1 - halfRatio, t));
-
-    this._pushHistory();
-    this.doors.push(new Door(targetWall, t, this.doorWidth, this.doorHinge, this.doorOpenDir, this.doorType));
-    this._status('Door added');
-  }
-
-  // ── Window Operations ───────────────────────
-  _addWindowAt(wx, wy) {
-    let targetWall = null;
-    for (let i = this.walls.length - 1; i >= 0; i--) {
-      if (this.walls[i].hitTest(wx, wy)) { targetWall = this.walls[i]; break; }
-    }
-    if (!targetWall) { this._status('Click on a wall to place the window'); return; }
-
-    const wallLen = targetWall.length;
-    if (wallLen < this.windowWidth) { this._status('Wall too short for this window'); return; }
-
-    const dx = targetWall.x2 - targetWall.x1;
-    const dy = targetWall.y2 - targetWall.y1;
-    const lenSq = dx * dx + dy * dy;
-    let t = ((wx - targetWall.x1) * dx + (wy - targetWall.y1) * dy) / lenSq;
-    const halfRatio = (this.windowWidth / 2) / wallLen;
-    t = Math.max(halfRatio, Math.min(1 - halfRatio, t));
-
-    this._pushHistory();
-    this.windows.push(new Window(targetWall, t, this.windowWidth, this.windowType));
-    this._status('Window added');
-  }
-
-  // ── Stair Operations ────────────────────────
-  _addStairAt(wx, wy) {
-    this._pushHistory();
-    const rad = this.stairRotation * Math.PI / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const hw = this.stairWidth / 2;
-    const hl = this.stairLength / 2;
-    const ox = hw * cos - hl * sin;
-    const oy = hw * sin + hl * cos;
-    this.stairs.push(new Stair(wx - ox, wy - oy, this.stairWidth, this.stairLength, this.stairRotation));
-    this._status('Stair added');
-  }
-
-  // ── Label Operations ────────────────────────
-  _addLabelAt(wx, wy) {
-    const text = prompt('Label text:', 'Room');
-    if (!text) return;
-    this._pushHistory();
-    this.labels.push(new Label(wx, wy, text, this.labelFontSize));
-    this._status('Label added');
-  }
-
-  // ── Polyline Operations (wire/pipe) ─────────
-  _addPolylinePoint(wx, wy) {
-    this.polylinePoints.push({ x: wx, y: wy });
-    if (this.polylinePoints.length === 1) {
-      const toolName = this.activeTool === 'wire' ? 'wire' : 'pipe';
-      this._status(`Click to add points, ESC to finish ${toolName}`);
-    }
-    this._render();
-  }
-
-  _finishPolyline() {
-    if (this.activeTool === 'floor') {
-      this._finishFloorPolygon();
-      return;
-    }
-
-    if (this.polylinePoints.length < 2) {
-      this.polylinePoints = [];
-      this._status('Need at least 2 points');
-      return;
-    }
-
-    this._pushHistory();
-    if (this.activeTool === 'wire') {
-      this.wires.push(new Wire([...this.polylinePoints], this.wireGauge));
-      this._status('Wire added');
-    } else if (this.activeTool === 'pipe') {
-      this.pipes.push(new Pipe([...this.polylinePoints], this.pipeType, this.pipeDiameter, this.pipeFlowDir));
-      this._status('Pipe added');
-    }
-    this.polylinePoints = [];
-    this._render();
-  }
-
-  _onRightClick() {
-    if (this.polylinePoints.length > 0) {
-      this._finishPolyline();
-    }
-  }
-
-  // ── Electrical Panel Operations ─────────────
-  _addPanelAt(wx, wy) {
-    this._pushHistory();
-    const next = this.panels.length + 1;
-    const name = `${this.panelNamePrefix || 'QD'}-${next}`;
-    const panel = new ElectricalPanel(
-      wx,
-      wy,
-      name,
-      this.panelVoltage,
-      this.panelPhases,
-      this.panelMainBreakerA,
-      CONFIG.DEFAULT_PANEL_BUS_CAPACITY_A,
-    );
-    this.panels.push(panel);
-    const circuit = newCircuitForPanel(this.circuits,panel.id);
-    this.circuits.push(circuit);
-    this.electricalCircuitId = circuit.id;
-    this._status('Electrical panel added');
-    this._refreshCircuitSelects();
-  }
-
-  _addCircuitToPanel(panel) {
-    if (!panel) return;
-    this._pushHistory();
-    const c = newCircuitForPanel(this.circuits,panel.id);
-    this.circuits.push(c);
-    this._refreshCircuitSelects();
-    this._syncSelection();
-    this._render();
-  }
-
-  // ── Electrical Symbol Operations ────────────
-  _addElectricalSymbolAt(wx, wy) {
-    this._pushHistory();
-    const circuitId = this.circuits.some(c => c.id === this.electricalCircuitId) ? this.electricalCircuitId : '';
-    this.electricalSymbols.push(new ElectricalSymbol(
-      wx,
-      wy,
-      this.electricalSymbolType,
-      this.electricalSymbolRotation,
-      circuitId,
-      this.electricalLoadA,
-    ));
-    this._status('Electrical symbol added');
-  }
-
-  // ── Plumbing Symbol Operations ──────────────
-  _addPlumbingSymbolAt(wx, wy) {
-    this._pushHistory();
-    this.plumbingSymbols.push(new PlumbingSymbol(wx, wy, this.plumbingSymbolType, this.plumbingSymbolRotation));
-    this._status('Plumbing symbol added');
-  }
-
-  // ── Furniture Operations ────────────────────
-  _addFurnitureAt(wx, wy) {
-    this._pushHistory();
-    const item = new Furniture(wx, wy, this.furnitureType, this.furnitureRotation);
-    this.furnitureItems.push(item);
-    // Auto-select the placed item so user can rotate/adjust immediately
-    this._clearSelection();
-    this.selectedFurniture = item;
-    this._setTool('select');
-    this._syncSelection();
-    this._status('Furniture placed — adjust rotation if needed');
-  }
-
-  _selectAt(wx, wy) { this.selection.selectAt(wx, wy); }
-  _eraseAt(wx, wy) { this.selection.eraseAt(wx, wy); }
+  _finishPolyline() { this.tools.finishPolyline(); }
+  _onRightClick() { this.tools.onRightClick(); }
+  _addCircuitToPanel(panel) { this.tools.addCircuitToPanel(panel); }
   _deleteSelected() { this.selection.deleteSelected(); }
-
-  // ── Dragging (Select Tool) ──────────────────
-  _tryStartDrag(wx, wy, snapped) {
-    if (!this.selectedWall) return false;
-    const wall = this.selectedWall;
-    const threshold = CONFIG.SNAP_RADIUS / this.zoom;
-
-    if (Geom.dist(wx, wy, wall.x1, wall.y1) < threshold) {
-      this.isDragging = true;
-      this.dragType = 'endpoint1';
-      this.dragWall = wall;
-      this.dragStartState = { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 };
-      this.canvas.style.cursor = 'move';
-      this._pushHistory();
-      return true;
-    }
-    if (Geom.dist(wx, wy, wall.x2, wall.y2) < threshold) {
-      this.isDragging = true;
-      this.dragType = 'endpoint2';
-      this.dragWall = wall;
-      this.dragStartState = { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 };
-      this.canvas.style.cursor = 'move';
-      this._pushHistory();
-      return true;
-    }
-    if (wall.hitTest(wx, wy)) {
-      this.isDragging = true;
-      this.dragType = 'body';
-      this.dragWall = wall;
-      this.dragOffset = { dx: wx - wall.x1, dy: wy - wall.y1 };
-      this.dragStartState = { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 };
-      this.canvas.style.cursor = 'move';
-      this._pushHistory();
-      return true;
-    }
-    return false;
-  }
-
-  _doDrag(sx, sy) {
-    const wall = this.dragWall;
-    if (!wall) return;
-
-    if (this.dragType === 'endpoint1') {
-      wall.x1 = sx; wall.y1 = sy;
-    } else if (this.dragType === 'endpoint2') {
-      wall.x2 = sx; wall.y2 = sy;
-    } else if (this.dragType === 'body') {
-      const dx = sx - this.dragOffset.dx - wall.x1;
-      const dy = sy - this.dragOffset.dy - wall.y1;
-      wall.x1 += dx; wall.y1 += dy;
-      wall.x2 += dx; wall.y2 += dy;
-    }
-    this._syncSelection();
-  }
-
-  _finishDrag() {
-    if (this.isDragging && this.dragWall) {
-      const wall = this.dragWall;
-      if (wall.length < CONFIG.MIN_WALL_LENGTH) {
-        const s = this.dragStartState;
-        wall.x1 = s.x1; wall.y1 = s.y1;
-        wall.x2 = s.x2; wall.y2 = s.y2;
-        this._status('Wall too short — reverted');
-      } else {
-        this._status('Wall moved');
-      }
-      this._syncSelection();
-      this._render();
-    }
-    if (this.isDragging && this._dragFurniture) {
-      this._status('Furniture moved');
-      this._syncSelection();
-      this._render();
-    }
-    this.isDragging = false;
-    this.dragType = null;
-    this.dragWall = null;
-    this.dragOffset = null;
-    this.dragStartState = null;
-    this._dragFurniture = null;
-    this._dragFurnitureOffset = null;
-    this.canvas.style.cursor = this.activeTool === 'select' ? 'default' : 'crosshair';
-  }
-
-  _tryStartFurnitureDrag(wx, wy) {
-    if (!this.selectedFurniture) return false;
-    if (!this.selectedFurniture.hitTest(wx, wy)) return false;
-    this.isDragging = true;
-    this._dragFurniture = this.selectedFurniture;
-    this._dragFurnitureOffset = { dx: wx - this.selectedFurniture.x, dy: wy - this.selectedFurniture.y };
-    this.canvas.style.cursor = 'move';
-    this._pushHistory();
-    return true;
-  }
-
-  // ── Floor Detection ─────────────────────────
-  _addFloorAt(wx, wy) {
-    const polygon = this._detectRoom(wx, wy);
-    if (polygon && polygon.length >= 3) {
-      this._pushHistory();
-      this.floors.push(new Floor(polygon, this.floorMaterial));
-      this._status('Floor added');
-    } else {
-      this._status('Closed room not detected — close the walls');
-    }
-    this._render();
-  }
-
-  _addFloorPoint(wx, wy) {
-    if (this.polylinePoints.length >= 3) {
-      const first = this.polylinePoints[0];
-      if (Geom.dist(wx, wy, first.x, first.y) < 10) {
-        this._finishFloorPolygon();
-        return;
-      }
-    }
-    this.polylinePoints.push({ x: wx, y: wy });
-    if (this.polylinePoints.length === 1) {
-      this._status('Click vertices, click first point or ESC to close');
-    }
-    this._render();
-  }
-
-  _finishFloorPolygon() {
-    if (this.polylinePoints.length < 3) {
-      this.polylinePoints = [];
-      this._status('Need at least 3 points');
-      return;
-    }
-    this._pushHistory();
-    this.floors.push(new Floor([...this.polylinePoints], this.floorMaterial));
-    this._status('Floor added');
-    this.polylinePoints = [];
-    this._render();
-  }
-
-  _detectRoom(wx, wy) {
-    const eps = 5;
-    const vertices = [];
-    const addVertex = (x, y) => {
-      for (const v of vertices) { if (Geom.dist(v.x, v.y, x, y) < eps) return v; }
-      const v = { x, y, edges: [] }; vertices.push(v); return v;
-    };
-    for (const wall of this.walls) {
-      const v1 = addVertex(wall.x1, wall.y1);
-      const v2 = addVertex(wall.x2, wall.y2);
-      v1.edges.push(v2); v2.edges.push(v1);
-    }
-    for (const v of vertices) {
-      v.edges.sort((a, b) => Math.atan2(a.y - v.y, a.x - v.x) - Math.atan2(b.y - v.y, b.x - v.x));
-    }
-    const faces = [];
-    const visited = new Set();
-    for (const start of vertices) {
-      for (const next of start.edges) {
-        const key = `${start.x},${start.y}->${next.x},${next.y}`;
-        if (visited.has(key)) continue;
-        const face = [];
-        let cur = start, nxt = next, steps = 0;
-        const maxSteps = vertices.length + 2;
-        while (steps < maxSteps) {
-          const ek = `${cur.x},${cur.y}->${nxt.x},${nxt.y}`;
-          if (visited.has(ek)) break;
-          visited.add(ek);
-          face.push({ x: cur.x, y: cur.y });
-          const inAng = Math.atan2(cur.y - nxt.y, cur.x - nxt.x);
-          let best = null, bestDiff = Infinity;
-          for (const nb of nxt.edges) {
-            if (nb === cur && nxt.edges.length > 1) continue;
-            const outAng = Math.atan2(nb.y - nxt.y, nb.x - nxt.x);
-            let diff = outAng - inAng; if (diff <= 0) diff += Math.PI * 2;
-            if (diff < bestDiff) { bestDiff = diff; best = nb; }
-          }
-          if (!best) break;
-          cur = nxt; nxt = best; steps++;
-          if (cur === start && nxt === next) break;
-        }
-        if (face.length >= 3 && cur === start) faces.push(face);
-      }
-    }
-    let bestFace = null, bestArea = Infinity;
-    for (const face of faces) {
-      if (Geom.pointInPolygon(wx, wy, face)) {
-        let area = 0;
-        for (let i = 0, j = face.length - 1; i < face.length; j = i++) {
-          area += face[j].x * face[i].y - face[i].x * face[j].y;
-        }
-        area = Math.abs(area / 2);
-        if (area < bestArea && area > 0) { bestArea = area; bestFace = face; }
-      }
-    }
-    return bestFace;
-  }
+  _finishDrag() { this.drag.finishDrag(); }
 
   // ── Tab Switching ───────────────────────────
   _switchTab(tabName) {
@@ -978,6 +641,7 @@ export class App {
       b.classList.toggle('active', b.dataset.value === this.axisOrigin));
 
     this._renderProjectStories();
+    this._renderPlanReview();
     this._refreshCircuitSelects();
   }
 
@@ -1005,185 +669,24 @@ export class App {
       input.addEventListener('change', () => {
         const idx = parseInt(input.dataset.index);
         this.stories[idx].storyHeight = parseInt(input.value) || CONFIG.DEFAULT_STORY_HEIGHT;
+        this._schedulePersist();
       });
     }
     for (const input of container.querySelectorAll('.proj-slab-thickness')) {
       input.addEventListener('change', () => {
         const idx = parseInt(input.dataset.index);
         this.stories[idx].slabThickness = parseInt(input.value) || CONFIG.DEFAULT_SLAB_THICKNESS;
+        this._schedulePersist();
       });
     }
   }
 
-  // ── JSON Export / Import ──────────────────────
-  _exportJSON() {
-    const data = {
-      ...this._getState(),
-      terrainWidth: this.terrainWidth,
-      terrainHeight: this.terrainHeight,
-      axisOrigin: this.axisOrigin,
-      showTerrain: this.showTerrain,
-    };
-    exportJSON(data, this.projectName);
-    this._status('JSON exported');
-  }
-
-  _importJSON(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target.result);
-        this._applySharedState(data);
-        this._status('Project loaded');
-      } catch (err) {
-        this._status('Invalid JSON file');
-      }
-    };
-    reader.readAsText(file);
-    // Reset input so same file can be loaded again
-    event.target.value = '';
-  }
-
-  _applySharedState(data) {
-    this._pushHistory();
-    this._setState(data);
-    if (data.projectName) this.projectName = data.projectName;
-    this._setUnitPrices(data.unitPrices);
-    if (data.terrainWidth) this.terrainWidth = data.terrainWidth;
-    if (data.terrainHeight) this.terrainHeight = data.terrainHeight;
-    if (data.axisOrigin) this.axisOrigin = data.axisOrigin;
-    if (data.showTerrain !== undefined) this.showTerrain = data.showTerrain;
-    this._centerView();
-    this._render();
-  }
-
-  async _shareProject() {
-    const data = {
-      ...this._getState(),
-      terrainWidth: this.terrainWidth,
-      terrainHeight: this.terrainHeight,
-      axisOrigin: this.axisOrigin,
-      showTerrain: this.showTerrain,
-    };
-
-    const encrypt = this.$('share-encrypt').checked;
-    const password = encrypt ? this.$('share-password').value : null;
-
-    if (encrypt && !password) {
-      this._status('Enter a password to encrypt the share link');
-      return;
-    }
-
-    try {
-      this._status('Generating share link...');
-      const { hash, byteSize } = await ShareManager.createShareHash(data, password);
-      const url = window.location.origin + window.location.pathname + hash;
-
-      const resultDiv = this.$('share-result');
-      const urlInput = this.$('share-url');
-      const sizeSpan = this.$('share-size');
-
-      urlInput.value = url;
-      resultDiv.style.display = '';
-
-      const kb = (byteSize / 1024).toFixed(1);
-      let sizeText = `${kb} KB compressed`;
-      if (url.length > 50000) {
-        sizeText += ' — URL is very long, some browsers may not support it';
-      }
-      sizeSpan.textContent = sizeText;
-
-      await navigator.clipboard.writeText(url);
-      this._status('Share link copied to clipboard');
-    } catch (err) {
-      this._status('Failed to generate share link');
-    }
-  }
-
-  async _loadFromHash() {
-    const hash = window.location.hash;
-    const { present, encrypted } = ShareManager.parseHashType(hash);
-    if (!present) return;
-
-    if (encrypted) {
-      this._showPasswordModal(hash);
-    } else {
-      try {
-        const { data } = await ShareManager.loadFromHash(hash, null);
-        this._applySharedState(data);
-        this._status('Shared project loaded');
-        history.replaceState(null, '', window.location.pathname);
-      } catch (err) {
-        this._status('Failed to load shared project');
-      }
-    }
-  }
-
-  _showPasswordModal(hash) {
-    const modal = this.$('share-password-modal');
-    const input = this.$('share-modal-password');
-    const errorDiv = this.$('share-modal-error');
-    const okBtn = this.$('share-modal-ok');
-    const cancelBtn = this.$('share-modal-cancel');
-    const backdrop = modal.querySelector('.share-modal-backdrop');
-
-    modal.style.display = '';
-    input.value = '';
-    errorDiv.style.display = 'none';
-    errorDiv.textContent = '';
-
-    // Focus input after display
-    requestAnimationFrame(() => input.focus());
-
-    const cleanup = () => {
-      modal.style.display = 'none';
-      okBtn.removeEventListener('click', onOk);
-      cancelBtn.removeEventListener('click', onCancel);
-      backdrop.removeEventListener('click', onCancel);
-      input.removeEventListener('keydown', onKeyDown);
-    };
-
-    const onOk = async () => {
-      const password = input.value;
-      if (!password) {
-        errorDiv.textContent = 'Please enter a password';
-        errorDiv.style.display = '';
-        return;
-      }
-      try {
-        okBtn.disabled = true;
-        okBtn.textContent = 'Unlocking...';
-        const { data } = await ShareManager.loadFromHash(hash, password);
-        cleanup();
-        this._applySharedState(data);
-        this._status('Encrypted project loaded');
-        history.replaceState(null, '', window.location.pathname);
-      } catch (err) {
-        okBtn.disabled = false;
-        okBtn.textContent = 'Unlock';
-        errorDiv.textContent = 'Wrong password or corrupted data';
-        errorDiv.style.display = '';
-      }
-    };
-
-    const onCancel = () => {
-      cleanup();
-      history.replaceState(null, '', window.location.pathname);
-      this._status('Share link cancelled');
-    };
-
-    const onKeyDown = (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); onOk(); }
-      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-    };
-
-    okBtn.addEventListener('click', onOk);
-    cancelBtn.addEventListener('click', onCancel);
-    backdrop.addEventListener('click', onCancel);
-    input.addEventListener('keydown', onKeyDown);
-  }
+  // ── Project I/O delegates ──────────────────
+  _exportJSON() { this.projectIO.exportJSONFile(); }
+  _importJSON(event) { this.projectIO.importJSON(event); }
+  _applySharedState(data) { this.applyProjectPayload(data); }
+  _shareProject() { this.projectIO.shareProject(); }
+  _loadFromHash() { this.projectIO.loadFromHash(); }
 
   // ── Undo / Redo ─────────────────────────────
   _undo() {
@@ -1196,15 +699,33 @@ export class App {
       this._render();
       return;
     }
-    const s = this.history.undo(this._getState());
-    if (s) { this._setState(s); this._syncSelection(); this._updateGhost(); this._status('Undone'); this._render(); }
+    const s = this.history.undo(this._getPersistPayload());
+    if (s) {
+      const normalized = parseProjectPayload(s);
+      if (normalized.meta) this._setProjectMeta(normalized.meta);
+      if (normalized.state) this._setState(normalized.state);
+      this._syncSelection();
+      this._updateGhost();
+      this._status('Undone');
+      this._render();
+    }
     this._syncUndoRedo();
+    this._schedulePersist();
   }
 
   _redo() {
-    const s = this.history.redo(this._getState());
-    if (s) { this._setState(s); this._syncSelection(); this._updateGhost(); this._status('Redone'); this._render(); }
+    const s = this.history.redo(this._getPersistPayload());
+    if (s) {
+      const normalized = parseProjectPayload(s);
+      if (normalized.meta) this._setProjectMeta(normalized.meta);
+      if (normalized.state) this._setState(normalized.state);
+      this._syncSelection();
+      this._updateGhost();
+      this._status('Redone');
+      this._render();
+    }
     this._syncUndoRedo();
+    this._schedulePersist();
   }
 
   _syncUndoRedo() {
@@ -1216,517 +737,10 @@ export class App {
   _render() {
     this._updateGhost();
     this.renderer.render(this);
+    this.bus.emit('render');
   }
 
-  _isMobilePointerEnvironment() {
-    return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse), (hover: none)').matches;
-  }
-
-  _setNavModeAttribute(mode) {
-    if (!this.hostElement) return;
-    if (mode) {
-      this.hostElement.setAttribute('data-nav-mode', mode);
-    } else {
-      this.hostElement.removeAttribute('data-nav-mode');
-    }
-  }
-
-  _clearMobileWalkInput() {
-    this._mobileNavMove.up = 0;
-    this._mobileNavMove.down = 0;
-    this._mobileNavMove.left = 0;
-    this._mobileNavMove.right = 0;
-    this._mobileLookPointerId = null;
-    this._mobileLookStart = null;
-    const fps = this.viewer3D?.fpsControls;
-    if (fps) fps.setTouchMove(0, 0);
-  }
-
-  _applyMobileWalkVector() {
-    const fps = this.viewer3D?.fpsControls;
-    if (!fps) return;
-    const x = (this._mobileNavMove.right || 0) - (this._mobileNavMove.left || 0);
-    const z = (this._mobileNavMove.down || 0) - (this._mobileNavMove.up || 0);
-    fps.setTouchMove(x, z);
-  }
-
-  _bindMobileWalkControls() {
-    const moveButtons = [
-      { id: 'walk-btn-up', key: 'up' },
-      { id: 'walk-btn-down', key: 'down' },
-      { id: 'walk-btn-left', key: 'left' },
-      { id: 'walk-btn-right', key: 'right' },
-    ];
-    const lookPad = this.$('mobile-look-control');
-
-    if (!lookPad) return;
-
-    const clearMovePointer = (e) => {
-      const key = this._mobileWalkMovePointers.get(e.pointerId);
-      if (!key) return;
-      this._mobileWalkMovePointers.delete(e.pointerId);
-      this._mobileNavMove[key] = Math.max(0, (this._mobileNavMove[key] || 0) - 1);
-      this._applyMobileWalkVector();
-    };
-
-    const onMoveBtnDown = (key) => (e) => {
-      if (!this.is3DMode || this.hostElement.getAttribute('data-nav-mode') !== 'fps') return;
-      if (!this._isMobilePointerEnvironment()) return;
-      e.preventDefault();
-      this._mobileWalkMovePointers.set(e.pointerId, key);
-      this._mobileNavMove[key] = (this._mobileNavMove[key] || 0) + 1;
-      this._applyMobileWalkVector();
-      if (e.pointerId != null) {
-        try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
-      }
-    };
-    const onMoveBtnUp = (e) => {
-      clearMovePointer(e);
-      if (e.pointerId != null) {
-        try { e.target.releasePointerCapture(e.pointerId); } catch (err) {}
-      }
-    };
-
-    for (const item of moveButtons) {
-      const btn = this.$(item.id);
-      if (!btn) continue;
-      const down = onMoveBtnDown(item.key);
-      const up = onMoveBtnUp;
-      btn.addEventListener('pointerdown', down);
-      btn.addEventListener('pointerup', up);
-      btn.addEventListener('pointercancel', up);
-      btn.addEventListener('pointerleave', up);
-      btn.addEventListener('pointerout', up);
-      this._mobileNavBoundHandlers.push(
-        { el: btn, type: 'pointerdown', handler: down },
-        { el: btn, type: 'pointerup', handler: up },
-        { el: btn, type: 'pointercancel', handler: up },
-        { el: btn, type: 'pointerleave', handler: up },
-        { el: btn, type: 'pointerout', handler: up }
-      );
-    }
-
-    const lookStart = (e) => {
-      if (!this.is3DMode || this.hostElement.getAttribute('data-nav-mode') !== 'fps') return;
-      if (!this._isMobilePointerEnvironment()) return;
-      e.preventDefault();
-      this._mobileLookPointerId = e.pointerId;
-      this._mobileLookStart = { x: e.clientX, y: e.clientY };
-      try { lookPad.setPointerCapture(e.pointerId); } catch (err) {}
-    };
-    const lookMove = (e) => {
-      if (!this.viewer3D || this._mobileLookPointerId !== e.pointerId) return;
-      if (e.pointerId == null || this.hostElement.getAttribute('data-nav-mode') !== 'fps') return;
-      if (!this._mobileLookStart) return;
-      const dx = e.clientX - this._mobileLookStart.x;
-      const dy = e.clientY - this._mobileLookStart.y;
-      this._mobileLookStart = { x: e.clientX, y: e.clientY };
-      this.viewer3D.fpsControls?.addTouchLook(dx, dy);
-    };
-    const lookEnd = () => {
-      if (!this._mobileLookStart) return;
-      this._mobileLookPointerId = null;
-      this._mobileLookStart = null;
-    };
-
-    lookPad.addEventListener('pointerdown', lookStart);
-    lookPad.addEventListener('pointermove', lookMove);
-    lookPad.addEventListener('pointerup', lookEnd);
-    lookPad.addEventListener('pointercancel', lookEnd);
-    lookPad.addEventListener('pointerleave', lookEnd);
-    lookPad.addEventListener('pointerout', lookEnd);
-    this._mobileNavBoundHandlers.push(
-      { el: lookPad, type: 'pointerdown', handler: lookStart },
-      { el: lookPad, type: 'pointermove', handler: lookMove },
-      { el: lookPad, type: 'pointerup', handler: lookEnd },
-      { el: lookPad, type: 'pointercancel', handler: lookEnd },
-      { el: lookPad, type: 'pointerleave', handler: lookEnd },
-      { el: lookPad, type: 'pointerout', handler: lookEnd }
-    );
-  }
-
-  // ── UI ──────────────────────────────────────
-  _bindUI() {
-    for (const btn of this.$$('.tool-btn')) {
-      btn.addEventListener('click', () => this._setTool(btn.dataset.tool));
-    }
-
-    // Wall thickness
-    this._bindBtnGroup('#wall-thickness-group .prop-btn', btn => { this.wallThickness = parseInt(btn.dataset.value); });
-    // Wall material
-    this._bindBtnGroup('#wall-material-group .material-btn', btn => { this.wallMaterial = btn.dataset.material; });
-    // Floor material
-    this._bindBtnGroup('#floor-material-group .material-btn', btn => { this.floorMaterial = btn.dataset.material; });
-    // Floor mode
-    this._bindBtnGroup('#floor-mode-group .prop-btn', btn => {
-      this.floorMode = btn.dataset.value;
-      if (this.activeTool === 'floor') {
-        this.polylinePoints = [];
-        this._status(this.floorMode === 'draw' ? 'Click to place polygon vertices' : 'Click inside a closed room');
-        this._render();
-      }
-    });
-    // Door type
-    this._bindBtnGroup('#door-type-group .prop-btn', btn => {
-      this.doorType = btn.dataset.value;
-      const hingeWrap = this.$('door-hinge-wrap');
-      const openWrap = this.$('door-opendir-wrap');
-      if (hingeWrap) hingeWrap.style.display = btn.dataset.value === 'single' ? '' : 'none';
-      if (openWrap) openWrap.style.display = btn.dataset.value === 'sliding' ? 'none' : '';
-    });
-    // Door width
-    this._bindBtnGroup('#door-width-group .prop-btn', btn => { this.doorWidth = parseInt(btn.dataset.value); });
-    // Door hinge
-    this._bindBtnGroup('#door-hinge-group .prop-btn', btn => { this.doorHinge = btn.dataset.value; });
-    // Door open direction
-    this._bindBtnGroup('#door-opendir-group .prop-btn', btn => { this.doorOpenDir = parseInt(btn.dataset.value); });
-    // Window type
-    this._bindBtnGroup('#window-type-group .prop-btn', btn => { this.windowType = btn.dataset.value; });
-    // Window width
-    this._bindBtnGroup('#window-width-group .prop-btn', btn => { this.windowWidth = parseInt(btn.dataset.value); });
-    // Stair width
-    this._bindBtnGroup('#stair-width-group .prop-btn', btn => { this.stairWidth = parseInt(btn.dataset.value); });
-    // Stair length
-    this._bindBtnGroup('#stair-length-group .prop-btn', btn => { this.stairLength = parseInt(btn.dataset.value); });
-    // Stair rotation
-    this._bindBtnGroup('#stair-rotation-group .prop-btn', btn => { this.stairRotation = parseInt(btn.dataset.value); });
-    // Label font size
-    this._bindBtnGroup('#label-fontsize-group .prop-btn', btn => { this.labelFontSize = parseInt(btn.dataset.value); });
-
-    // Wire gauge
-    this._bindBtnGroup('#wire-gauge-group .prop-btn', btn => { this.wireGauge = parseFloat(btn.dataset.value); });
-    // Panel defaults
-    const panelNamePrefixInput = this.$('panel-name-prefix');
-    if (panelNamePrefixInput) {
-      panelNamePrefixInput.addEventListener('input', () => {
-        this.panelNamePrefix = panelNamePrefixInput.value || 'QD';
-      });
-    }
-    this._bindBtnGroup('#panel-voltage-group .prop-btn', btn => { this.panelVoltage = parseInt(btn.dataset.value); });
-    this._bindBtnGroup('#panel-phases-group .prop-btn', btn => { this.panelPhases = parseInt(btn.dataset.value); });
-    this._bindBtnGroup('#panel-main-breaker-group .prop-btn', btn => { this.panelMainBreakerA = parseInt(btn.dataset.value); });
-    // Electrical symbol type
-    this._bindBtnGroup('#elec-symbol-type-group .prop-btn', btn => { this.electricalSymbolType = btn.dataset.value; });
-    // Electrical symbol rotation
-    this._bindBtnGroup('#elec-symbol-rotation-group .prop-btn', btn => { this.electricalSymbolRotation = parseInt(btn.dataset.value); });
-    const elecLoadInput = this.$('elec-load-a');
-    if (elecLoadInput) {
-      elecLoadInput.addEventListener('change', () => {
-        this.electricalLoadA = Math.max(0.1, parseFloat(elecLoadInput.value) || CONFIG.DEFAULT_SYMBOL_AMPERAGE_A);
-        elecLoadInput.value = String(this.electricalLoadA);
-      });
-    }
-    const elecCircuitSelect = this.$('elec-circuit-select');
-    if (elecCircuitSelect) {
-      elecCircuitSelect.addEventListener('change', () => {
-        this.electricalCircuitId = elecCircuitSelect.value;
-      });
-    }
-
-    // Pipe type
-    this._bindBtnGroup('#pipe-type-group .prop-btn', btn => { this.pipeType = btn.dataset.value; });
-    // Pipe diameter
-    this._bindBtnGroup('#pipe-diameter-group .prop-btn', btn => { this.pipeDiameter = parseInt(btn.dataset.value); });
-    // Pipe flow direction
-    this._bindBtnGroup('#pipe-flow-group .prop-btn', btn => { this.pipeFlowDir = parseInt(btn.dataset.value); });
-    // Plumbing symbol type
-    this._bindBtnGroup('#plumb-symbol-type-group .prop-btn', btn => { this.plumbingSymbolType = btn.dataset.value; });
-    // Plumbing symbol rotation
-    this._bindBtnGroup('#plumb-symbol-rotation-group .prop-btn', btn => { this.plumbingSymbolRotation = parseInt(btn.dataset.value); });
-
-    // Furniture type
-    this._bindBtnGroup('#furniture-type-group .prop-btn', btn => { this.furnitureType = btn.dataset.value; });
-    // Furniture rotation
-    this._bindBtnGroup('#furniture-rotation-group .prop-btn', btn => { this.furnitureRotation = parseInt(btn.dataset.value); });
-
-    // Selection wall thickness
-    for (const btn of this.$$('#sel-thickness-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedWall) return;
-        this._pushHistory(); this.selectedWall.thickness = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-    // Selection wall material
-    for (const btn of this.$$('#sel-material-group .material-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedWall) return;
-        this._pushHistory(); this.selectedWall.material = btn.dataset.material;
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Selected door controls
-    for (const btn of this.$$('#sel-door-type-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedDoor) return;
-        this._pushHistory(); this.selectedDoor.doorType = btn.dataset.value;
-        this.$$('#sel-door-type-group .prop-btn').forEach(b => b.classList.toggle('active', b.dataset.value === btn.dataset.value));
-        this._syncSelection(); this._render();
-      });
-    }
-    for (const btn of this.$$('#sel-door-width-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedDoor) return;
-        this._pushHistory(); this.selectedDoor.width = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-    const flipHinge = this.$('btn-flip-hinge');
-    if (flipHinge) flipHinge.addEventListener('click', () => {
-      if (!this.selectedDoor) return;
-      this._pushHistory();
-      this.selectedDoor.hingeSide = this.selectedDoor.hingeSide === 'left' ? 'right' : 'left';
-      this._syncSelection(); this._render();
-    });
-    const flipOpen = this.$('btn-flip-open');
-    if (flipOpen) flipOpen.addEventListener('click', () => {
-      if (!this.selectedDoor) return;
-      this._pushHistory();
-      this.selectedDoor.openDir *= -1;
-      this._syncSelection(); this._render();
-    });
-
-    // Selected window controls
-    for (const btn of this.$$('#sel-window-type-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedWindow) return;
-        this._pushHistory(); this.selectedWindow.windowType = btn.dataset.value;
-        this.$$('#sel-window-type-group .prop-btn').forEach(b => b.classList.toggle('active', b.dataset.value === btn.dataset.value));
-        this._syncSelection(); this._render();
-      });
-    }
-    for (const btn of this.$$('#sel-window-width-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedWindow) return;
-        this._pushHistory(); this.selectedWindow.width = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Selected stair controls
-    for (const btn of this.$$('#sel-stair-rotation-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedStair) return;
-        this._pushHistory(); this.selectedStair.rotation = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Selected label controls
-    const selLabelText = this.$('sel-label-text');
-    if (selLabelText) {
-      selLabelText.addEventListener('input', () => {
-        if (!this.selectedLabel) return;
-        if (!this._labelEditActive) {
-          this._pushHistory();
-          this._labelEditActive = true;
-        }
-        this.selectedLabel.text = selLabelText.value;
-        this._render();
-      });
-      selLabelText.addEventListener('blur', () => {
-        this._labelEditActive = false;
-      });
-      selLabelText.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          selLabelText.blur();
-        }
-      });
-    }
-    for (const btn of this.$$('#sel-label-fontsize-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedLabel) return;
-        this._pushHistory(); this.selectedLabel.fontSize = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Selected wire gauge
-    for (const btn of this.$$('#sel-wire-gauge-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedWire) return;
-        this._pushHistory(); this.selectedWire.gauge = parseFloat(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Selected panel controls
-    const selPanelName = this.$('sel-panel-name');
-    if (selPanelName) {
-      selPanelName.addEventListener('change', () => {
-        if (!this.selectedPanel) return;
-        this._pushHistory();
-        this.selectedPanel.name = selPanelName.value || this.selectedPanel.name;
-        this._syncSelection();
-        this._render();
-      });
-    }
-    const selPanelMainBreakerInput = this.$('sel-panel-main-breaker-input');
-    if (selPanelMainBreakerInput) {
-      selPanelMainBreakerInput.addEventListener('change', () => {
-        if (!this.selectedPanel) return;
-        this._pushHistory();
-        this.selectedPanel.mainBreakerA = Math.max(1, parseInt(selPanelMainBreakerInput.value) || this.selectedPanel.mainBreakerA);
-        selPanelMainBreakerInput.value = String(this.selectedPanel.mainBreakerA);
-        this._syncSelection();
-        this._render();
-      });
-    }
-    const addCircuitBtn = this.$('btn-panel-add-circuit');
-    if (addCircuitBtn) {
-      addCircuitBtn.addEventListener('click', () => {
-        if (!this.selectedPanel) return;
-        this._addCircuitToPanel(this.selectedPanel);
-      });
-    }
-
-    // Selected electrical symbol load/circuit
-    const selElecLoadInput = this.$('sel-elec-load-a');
-    if (selElecLoadInput) {
-      selElecLoadInput.addEventListener('change', () => {
-        if (!this.selectedElectricalSymbol) return;
-        this._pushHistory();
-        this.selectedElectricalSymbol.amperageA = Math.max(0.1, parseFloat(selElecLoadInput.value) || CONFIG.DEFAULT_SYMBOL_AMPERAGE_A);
-        selElecLoadInput.value = String(this.selectedElectricalSymbol.amperageA);
-        this._syncSelection();
-        this._render();
-      });
-    }
-    const selElecCircuitSelect = this.$('sel-elec-circuit-select');
-    if (selElecCircuitSelect) {
-      selElecCircuitSelect.addEventListener('change', () => {
-        if (!this.selectedElectricalSymbol) return;
-        this._pushHistory();
-        this.selectedElectricalSymbol.circuitId = selElecCircuitSelect.value;
-        this._syncSelection();
-        this._render();
-      });
-    }
-
-    // Selected pipe flow direction
-    for (const btn of this.$$('#sel-pipe-flow-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedPipe) return;
-        this._pushHistory(); this.selectedPipe.flowDir = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Selected electrical symbol rotation
-    for (const btn of this.$$('#sel-elec-symbol-rotation-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedElectricalSymbol) return;
-        this._pushHistory(); this.selectedElectricalSymbol.rotation = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Selected plumbing symbol rotation
-    for (const btn of this.$$('#sel-plumb-symbol-rotation-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedPlumbingSymbol) return;
-        this._pushHistory(); this.selectedPlumbingSymbol.rotation = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Selected furniture rotation
-    for (const btn of this.$$('#sel-furniture-rotation-group .prop-btn')) {
-      btn.addEventListener('click', () => {
-        if (!this.selectedFurniture) return;
-        this._pushHistory(); this.selectedFurniture.rotation = parseInt(btn.dataset.value);
-        this._syncSelection(); this._render();
-      });
-    }
-
-    // Delete buttons
-    for (const btn of this.$$('.btn-delete-selected')) {
-      btn.addEventListener('click', () => this._deleteSelected());
-    }
-
-    this.$('grid-size').addEventListener('change', e => { this.gridSize = parseInt(e.target.value); this._render(); });
-    this.$('snap-grid').addEventListener('change', e => { this.snapGrid = e.target.checked; });
-    this.$('snap-angle').addEventListener('change', e => { this.snapAngle = e.target.checked; });
-    this.$('snap-angle-deg').addEventListener('change', e => { this.snapAngleDeg = parseInt(e.target.value); });
-    this.$('snap-endpoint').addEventListener('change', e => { this.snapEndpoint = e.target.checked; });
-
-    this.$('btn-undo').addEventListener('click', () => this._undo());
-    this.$('btn-redo').addEventListener('click', () => this._redo());
-
-    // 3D
-    this.$('btn-3d').addEventListener('click', () => this._toggle3D());
-    this.$('btn-nav-mode').addEventListener('click', () => this._toggleNavMode());
-
-    // Tab switching
-    for (const btn of this.$$('.top-tab')) {
-      btn.addEventListener('click', () => this._switchTab(btn.dataset.tab));
-    }
-
-    // Costs tab
-    this.$('costs-copy').addEventListener('click', () => this.costsView.copyClipboard());
-    this.$('costs-csv').addEventListener('click', () => this.costsView.downloadCSV());
-
-    // Stories
-    this.$('btn-add-story').addEventListener('click', () => this._addStory());
-    this.$('btn-remove-story').addEventListener('click', () => this._removeStory());
-
-    // Project tab — terrain
-    this.$('proj-terrain-width').addEventListener('change', e => {
-      this.terrainWidth = Math.max(100, parseInt(e.target.value) * 100);
-      this._centerView(); this._render();
-    });
-    this.$('proj-terrain-height').addEventListener('change', e => {
-      this.terrainHeight = Math.max(100, parseInt(e.target.value) * 100);
-      this._centerView(); this._render();
-    });
-    this.$('proj-show-terrain').addEventListener('change', e => {
-      this.showTerrain = e.target.checked; this._render();
-    });
-
-    // Project tab — axis origin
-    this._bindBtnGroup('#proj-axis-origin-group .prop-btn', btn => {
-      this.axisOrigin = btn.dataset.value;
-      this._centerView(); this._render();
-    });
-
-    // Project tab — name
-    this.$('project-name').addEventListener('change', e => {
-      this.projectName = e.target.value || 'Untitled Project';
-    });
-
-    // Project tab — export/import
-    this.$('proj-export-png').addEventListener('click', () => this._exportPNG());
-    this.$('proj-export-json').addEventListener('click', () => this._exportJSON());
-    this.$('proj-import-json').addEventListener('click', () => this.$('proj-import-file').click());
-    this.$('proj-import-file').addEventListener('change', e => this._importJSON(e));
-
-    // Project tab — share
-    this.$('share-encrypt').addEventListener('change', e => {
-      this.$('share-password-row').style.display = e.target.checked ? '' : 'none';
-    });
-    this.$('btn-share').addEventListener('click', () => this._shareProject());
-    this.$('share-url').addEventListener('click', () => {
-      const input = this.$('share-url');
-      input.select();
-      navigator.clipboard.writeText(input.value);
-      this._status('Share link copied');
-    });
-
-    this._refreshCircuitSelects();
-  }
-
-  _bindBtnGroup(selector, callback) {
-    const btns = this.$$(selector);
-    for (const btn of btns) {
-      btn.addEventListener('click', () => {
-        btns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        callback(btn);
-      });
-    }
-  }
+  _bindUI() { bindUI(this); }
 
   _ensureValidTool() {
     const tools = CONFIG.LAYER_TOOLS[this.activeLayer] || [];
@@ -1799,119 +813,13 @@ export class App {
 
   _status(text) {
     this.$('status-text').textContent = text;
+    this.bus.emit('status', text);
   }
 
-  // ── Export PNG ───────────────────────────────
-  _exportPNG() {
-    if (!exportPNG(this.currentStory, this.renderer, this.currentStory.name)) {
-      this._status('Nothing to export');
-      return;
-    }
-    this._status('PNG exported!');
-  }
-
-  // ── 3D View ─────────────────────────────────
-  _toggle3D() {
-    if (this.is3DMode) {
-      this._exit3D();
-    } else {
-      this._enter3D();
-    }
-  }
-
-  _enter3D() {
-    // 1. Switch mode first — CSS shows #three-canvas, hides panels & 2D canvas
-    this.is3DMode = true;
-    this.hostElement.setAttribute('data-mode', '3d');
-
-    // 2. Create viewer (lazy) — after mode switch so container has full width
-    const container = this.$('canvas-container');
-    if (!this.viewer3D) {
-      this.viewer3D = new Viewer3D(container, this.root);
-      this.viewer3D.onNavModeChange = (mode) => {
-        const btnNav = this.$('btn-nav-mode');
-        if (!btnNav) return;
-        if (mode === 'orbit') {
-          btnNav.textContent = 'Orbit';
-          btnNav.classList.remove('active');
-          this._setNavModeAttribute('orbit');
-          this._clearMobileWalkInput();
-          this._status(this._isMobilePointerEnvironment()
-            ? 'Orbit mode — one-finger drag to look'
-            : 'Orbit mode — drag to rotate, scroll to zoom'
-          );
-        } else {
-          btnNav.textContent = 'Walk';
-          btnNav.classList.add('active');
-          this._setNavModeAttribute('fps');
-          this._status(this._isMobilePointerEnvironment()
-            ? 'Walk mode — use arrows + right drag'
-            : 'Walk mode — WASD to move, click to lock mouse'
-          );
-          this._applyMobileWalkVector();
-        }
-      };
-    }
-
-    // 3. Build, resize (container now at full width), start render loop
-    this.viewer3D.buildScene(this.stories, this.terrainWidth, this.terrainHeight, this.axisOrigin);
-    this.viewer3D.resize();
-    this.viewer3D.start();
-
-    // Button states
-    const btn3d = this.$('btn-3d');
-    if (btn3d) btn3d.classList.add('active');
-    const btnNav = this.$('btn-nav-mode');
-    if (btnNav) btnNav.style.display = '';
-    this._setNavModeAttribute('orbit');
-
-    this._status('3D View — Press 0 to return to 2D');
-  }
-
-  _exit3D() {
-    if (this.viewer3D) {
-      this.viewer3D.stop();
-      this.viewer3D.setNavigationMode('orbit');
-    }
-    this._setNavModeAttribute(null);
-    this.is3DMode = false;
-    this.hostElement.removeAttribute('data-mode');
-
-    // Button states
-    const btn3d = this.$('btn-3d');
-    if (btn3d) btn3d.classList.remove('active');
-    const btnNav = this.$('btn-nav-mode');
-    if (btnNav) {
-      btnNav.style.display = 'none';
-      btnNav.textContent = 'Orbit';
-      btnNav.classList.remove('active');
-    }
-    this._clearMobileWalkInput();
-
-    this._render();
-    this._status('2D View');
-  }
-
-  _toggleNavMode() {
-    if (!this.viewer3D || !this.is3DMode) return;
-    const btnNav = this.$('btn-nav-mode');
-    if (this.viewer3D.navMode === 'orbit') {
-      this.viewer3D.setNavigationMode('fps');
-      if (btnNav) { btnNav.textContent = 'Walk'; btnNav.classList.add('active'); }
-      this._status(this._isMobilePointerEnvironment()
-        ? 'Walk mode — use arrows + right drag'
-        : 'Walk mode — WASD to move, click to lock mouse'
-      );
-    } else {
-      this.viewer3D.setNavigationMode('orbit');
-      if (btnNav) { btnNav.textContent = 'Orbit'; btnNav.classList.remove('active'); }
-      this._status(this._isMobilePointerEnvironment()
-        ? 'Orbit mode — one-finger drag to look'
-        : 'Orbit mode — drag to rotate, scroll to zoom'
-      );
-      this._clearMobileWalkInput();
-    }
-  }
+  // ── 3D / ProjectIO delegates ────────────────
+  _toggle3D() { this.threeD.toggle3D(); }
+  _toggleNavMode() { this.threeD.toggleNavMode(); }
+  _exportPNG() { this.projectIO.exportPNG(); }
 
   // ── Cleanup ─────────────────────────────────
   destroy() {
@@ -1920,16 +828,7 @@ export class App {
       this.input = null;
     }
 
-    for (const { el, type, handler } of this._mobileNavBoundHandlers) {
-      el.removeEventListener(type, handler);
-    }
-    this._mobileNavBoundHandlers.length = 0;
-    this._mobileWalkMovePointers.clear();
-    this._clearMobileWalkInput();
-
-    if (this.viewer3D) {
-      this.viewer3D.dispose();
-      this.viewer3D = null;
-    }
+    this.threeD.destroy();
+    this.bus.destroy();
   }
 }

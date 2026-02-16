@@ -105,9 +105,7 @@ export class Viewer3D {
     // Remove previous building
     if (this.buildingGroup) {
       this.scene.remove(this.buildingGroup);
-      this.buildingGroup.traverse(child => {
-        if (child.geometry) child.geometry.dispose();
-      });
+      this._disposeObjectTree(this.buildingGroup);
     }
 
     this.buildingGroup = SceneBuilder.build(stories);
@@ -147,6 +145,29 @@ export class Viewer3D {
 
     // Auto-position camera based on building bounds
     this._autoCameraPosition();
+  }
+
+  _disposeObjectTree(root) {
+    root.traverse((child) => {
+      if (child.geometry && typeof child.geometry.dispose === 'function') {
+        child.geometry.dispose();
+      }
+
+      const materials = [];
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          materials.push(...child.material);
+        } else {
+          materials.push(child.material);
+        }
+      }
+
+      for (const material of materials) {
+        if (!material || !material.dispose) continue;
+        if (material.userData?.hoomerShared) continue;
+        material.dispose();
+      }
+    });
   }
 
   _adjustShadowBounds() {
@@ -264,14 +285,22 @@ export class Viewer3D {
       this.orbitControls = null;
     }
     if (this.buildingGroup) {
-      this.buildingGroup.traverse(child => {
-        if (child.geometry) child.geometry.dispose();
-      });
+      this._disposeObjectTree(this.buildingGroup);
       this.scene.remove(this.buildingGroup);
+      this.buildingGroup = null;
     }
-    this.scene.traverse(child => {
-      if (child.geometry) child.geometry.dispose();
-    });
+
+    if (this._ground) {
+      this._disposeObjectTree(this._ground);
+      this.scene.remove(this._ground);
+      this._ground = null;
+    }
+    if (this._grid) {
+      this._disposeObjectTree(this._grid);
+      this.scene.remove(this._grid);
+      this._grid = null;
+    }
+
     Materials3D.dispose();
     if (this.renderer) {
       this.renderer.dispose();

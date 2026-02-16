@@ -36,6 +36,7 @@ export class Materials3D {
       opacity: def.opacity !== undefined ? def.opacity : 1.0,
       side: def.transparent ? THREE.DoubleSide : THREE.FrontSide,
     });
+    mat.userData = { ...(mat.userData || {}), hoomerShared: true };
     _cache.set(cacheKey, mat);
     return mat;
   }

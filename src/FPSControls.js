@@ -46,12 +46,9 @@ export class FPSControls {
     this._onKeyDown = this._handleKeyDown.bind(this);
     this._onKeyUp = this._handleKeyUp.bind(this);
     this._onLockChange = this._handleLockChange.bind(this);
+    this._onCanvasClick = this._handleCanvasClick.bind(this);
 
-    this.domElement.addEventListener('click', () => {
-      if (this._enabled && !this.pointerLock.isLocked) {
-        this.pointerLock.lock();
-      }
-    });
+    this.domElement.addEventListener('click', this._onCanvasClick);
   }
 
   enable() {
@@ -103,6 +100,12 @@ export class FPSControls {
     if (!this.pointerLock.isLocked) {
       // Lost pointer lock — switch back to orbit
       this.viewer.setNavigationMode('orbit');
+    }
+  }
+
+  _handleCanvasClick() {
+    if (this._enabled && !this.pointerLock.isLocked) {
+      this.pointerLock.lock();
     }
   }
 
@@ -210,6 +213,7 @@ export class FPSControls {
 
   dispose() {
     this.disable();
+    this.domElement.removeEventListener('click', this._onCanvasClick);
     this.pointerLock.dispose();
   }
 }
