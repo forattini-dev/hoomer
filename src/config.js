@@ -221,9 +221,9 @@ export const CONFIG = {
     drainage: '#8B5E3C',
   },
   PIPE_LABELS: {
-    cold: 'Água fria',
-    hot: 'Água quente',
-    drainage: 'Esgoto',
+    cold: 'Cold water',
+    hot: 'Hot water',
+    drainage: 'Waste water',
   },
   PIPE_DASH: {
     cold: [],

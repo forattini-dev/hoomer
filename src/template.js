@@ -490,9 +490,9 @@ export const template = `
           <div class="prop-group">
             <label>Type</label>
             <div class="btn-group" id="pipe-type-group">
-              <button data-value="cold" class="prop-btn active" style="color:#4a90d9">Água fria</button>
-              <button data-value="hot" class="prop-btn" style="color:#e74c3c">Água quente</button>
-              <button data-value="drainage" class="prop-btn" style="color:#8B5E3C">Esgoto</button>
+              <button data-value="cold" class="prop-btn active" style="color:#4a90d9">Cold Water</button>
+              <button data-value="hot" class="prop-btn" style="color:#e74c3c">Hot Water</button>
+              <button data-value="drainage" class="prop-btn" style="color:#8B5E3C">Waste Water</button>
             </div>
           </div>
           <div class="prop-group">

@@ -1,46 +1,46 @@
 # Hoomer — Floor Plan Editor
 
-Aplicação de plantas em JavaScript/Canvas (2D) com exportação e recursos de visualização 3D.
+A JavaScript 2D floor plan editor with JSON export/import and integrated 3D viewing mode.
 
-## Rodar local
+## Run Locally
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-- `pnpm dev`: recompila em watch e abre `live-server`.
+- `pnpm dev`: rebuilds on changes and launches `live-server`.
 
-## Preparar build estático (GitHub Pages)
+## Build for GitHub Pages
 
 ```bash
 pnpm build:pages
 ```
 
-Isso gera:
-- `dist/app.js` (bundle da aplicação)
-- `dist/index.html` (página estática pronta para Pages, com caminho `./app.js`)
+This generates:
+- `dist/app.js` (app bundle)
+- `dist/index.html` (static entrypoint with relative `./app.js` path)
 - `dist/.nojekyll`
 
-Você também pode testar localmente:
+You can preview locally:
 
 ```bash
 pnpm serve:pages
 ```
 
-## Deploy automático no GitHub Pages
+## Automated GitHub Pages Deployment
 
-Incluímos o workflow:
+Workflow included in:
 
 - `.github/workflows/gh-pages.yml`
 
-Fluxo:
-1. Trigger no push da branch `main` (ou execução manual).
-2. Instala dependências com pnpm.
-3. Roda `pnpm build:pages`.
-4. Faz upload do diretório `dist`.
-5. Publica no GitHub Pages.
+Flow:
+1. Triggered on push to `main` (or manual run from Actions).
+2. Installs dependencies with pnpm.
+3. Runs `pnpm build:pages`.
+4. Uploads the `dist` directory.
+5. Publishes to GitHub Pages.
 
-## Observação de configuração
+## Repository Settings
 
-- No repositório do GitHub, em **Settings → Pages**, escolha **Source: GitHub Actions**.
+- In **GitHub → Settings → Pages**, set **Source: GitHub Actions**.
