@@ -16,6 +16,11 @@ const MATERIAL_DEFS = {
   // Stair default
   stair: { color: 0x999999, roughness: 0.7 },
 
+  // Roof materials
+  tiles: { color: 0xA0522D, roughness: 0.75 },
+  slate: { color: 0x4A4A4A, roughness: 0.8 },
+  metal: { color: 0x8A9BA8, roughness: 0.3, metalness: 0.4 },
+
   // Glass
   glass: { color: 0x88ccee, roughness: 0.05, transparent: true, opacity: 0.35 },
 };
@@ -31,10 +36,10 @@ export class Materials3D {
     const mat = new THREE.MeshStandardMaterial({
       color: def.color,
       roughness: def.roughness,
-      metalness: 0.0,
+      metalness: def.metalness || 0.0,
       transparent: !!def.transparent,
       opacity: def.opacity !== undefined ? def.opacity : 1.0,
-      side: def.transparent ? THREE.DoubleSide : THREE.FrontSide,
+      side: (def.transparent || key === 'roof') ? THREE.DoubleSide : THREE.FrontSide,
     });
     mat.userData = { ...(mat.userData || {}), hoomerShared: true };
     _cache.set(cacheKey, mat);

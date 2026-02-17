@@ -3,7 +3,10 @@
 
 export const toolsPanel = `
       <aside id="tools-panel">
-        <div class="panel-title">Tools</div>
+        <div class="mobile-panel-header">
+          <div class="panel-title">Tools</div>
+          <button id="btn-mobile-close-tools" class="panel-mobile-close" type="button" aria-label="Fechar painel de ferramentas">×</button>
+        </div>
 
         <!-- Structure tools -->
         <div class="tool-group" id="tools-structure">

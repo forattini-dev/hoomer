@@ -34,52 +34,16 @@ export class SelectionManager {
     const app = this.app;
     this.clear();
 
-    if (app.activeLayer === 'structure') {
-      for (let i = app.doors.length - 1; i >= 0; i--) {
-        if (app.doors[i].hitTest(wx, wy)) { app.selectedDoor = app.doors[i]; this.syncUI(); app._render(); return; }
-      }
-      for (let i = app.windows.length - 1; i >= 0; i--) {
-        if (app.windows[i].hitTest(wx, wy)) { app.selectedWindow = app.windows[i]; this.syncUI(); app._render(); return; }
-      }
-      for (let i = app.labels.length - 1; i >= 0; i--) {
-        if (app.labels[i].hitTest(wx, wy)) { app.selectedLabel = app.labels[i]; this.syncUI(); app._render(); return; }
-      }
-      for (let i = app.stairs.length - 1; i >= 0; i--) {
-        if (app.stairs[i].hitTest(wx, wy)) { app.selectedStair = app.stairs[i]; this.syncUI(); app._render(); return; }
-      }
-      for (let i = app.walls.length - 1; i >= 0; i--) {
-        if (app.walls[i].hitTest(wx, wy)) { app.selectedWall = app.walls[i]; break; }
-      }
-      if (!app.selectedWall) {
-        for (let i = app.floors.length - 1; i >= 0; i--) {
-          if (app.floors[i].hitTest(wx, wy)) { app.selectedFloor = app.floors[i]; break; }
-        }
-      }
-    } else if (app.activeLayer === 'electrical') {
-      for (let i = app.panels.length - 1; i >= 0; i--) {
-        if (app.panels[i].hitTest(wx, wy)) { app.selectedPanel = app.panels[i]; this.syncUI(); app._render(); return; }
-      }
-      for (let i = app.electricalSymbols.length - 1; i >= 0; i--) {
-        if (app.electricalSymbols[i].hitTest(wx, wy)) { app.selectedElectricalSymbol = app.electricalSymbols[i]; this.syncUI(); app._render(); return; }
-      }
-      for (let i = app.wires.length - 1; i >= 0; i--) {
-        if (app.wires[i].hitTest(wx, wy)) { app.selectedWire = app.wires[i]; break; }
-      }
-    } else if (app.activeLayer === 'plumbing') {
-      for (let i = app.plumbingSymbols.length - 1; i >= 0; i--) {
-        if (app.plumbingSymbols[i].hitTest(wx, wy)) { app.selectedPlumbingSymbol = app.plumbingSymbols[i]; this.syncUI(); app._render(); return; }
-      }
-      for (let i = app.pipes.length - 1; i >= 0; i--) {
-        if (app.pipes[i].hitTest(wx, wy)) { app.selectedPipe = app.pipes[i]; break; }
-      }
-    } else if (app.activeLayer === 'furniture') {
-      for (let i = app.furnitureItems.length - 1; i >= 0; i--) {
-        if (app.furnitureItems[i].hitTest(wx, wy)) {
-          app.selectedFurniture = app.furnitureItems[i];
-          this.syncUI(); app._render(); return;
-        }
-      }
+    const specsByLayer = this._getSelectionSpecs();
+    const layerSpecs = specsByLayer[app.activeLayer] || [];
+    for (const spec of layerSpecs) {
+      if (spec.when && !spec.when()) continue;
+      const hit = this._hitTest(spec.getItems(), wx, wy);
+      if (!hit) continue;
+      spec.setSelected(hit);
+      break;
     }
+
     this.syncUI();
     app._render();
   }
@@ -87,165 +51,315 @@ export class SelectionManager {
   // ── Erase at world coords ────────────────────
   eraseAt(wx, wy) {
     const app = this.app;
+    const specsByLayer = this._getEraseSpecs();
+    const layerSpecs = specsByLayer[app.activeLayer] || [];
 
-    if (app.activeLayer === 'structure') {
-      for (let i = app.doors.length - 1; i >= 0; i--) {
-        if (app.doors[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.doors.splice(i, 1); app._status('Door removed'); app._render(); return;
-        }
-      }
-      for (let i = app.windows.length - 1; i >= 0; i--) {
-        if (app.windows[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.windows.splice(i, 1); app._status('Window removed'); app._render(); return;
-        }
-      }
-      for (let i = app.labels.length - 1; i >= 0; i--) {
-        if (app.labels[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.labels.splice(i, 1); app._status('Label removed'); app._render(); return;
-        }
-      }
-      for (let i = app.stairs.length - 1; i >= 0; i--) {
-        if (app.stairs[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.stairs.splice(i, 1); app._status('Stair removed'); app._render(); return;
-        }
-      }
-      for (let i = app.walls.length - 1; i >= 0; i--) {
-        if (app.walls[i].hitTest(wx, wy)) {
-          app._pushHistory();
-          const wall = app.walls[i];
-          app.doors = app.doors.filter(d => d.wall !== wall);
-          app.windows = app.windows.filter(w => w.wall !== wall);
-          app.walls.splice(i, 1);
-          app._status('Wall removed'); app._render(); return;
-        }
-      }
-      for (let i = app.floors.length - 1; i >= 0; i--) {
-        if (app.floors[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.floors.splice(i, 1); app._status('Floor removed'); app._render(); return;
-        }
-      }
-    } else if (app.activeLayer === 'electrical') {
-      for (let i = app.panels.length - 1; i >= 0; i--) {
-        if (app.panels[i].hitTest(wx, wy)) {
-          app._pushHistory();
-          const panel = app.panels[i];
-          const panelCircuits = getCircuitsForPanel(app.circuits,panel.id).map(c => c.id);
-          app.circuits = app.circuits.filter(c => c.panelId !== panel.id);
-          app.electricalSymbols.forEach(sym => {
-            if (panelCircuits.includes(sym.circuitId)) sym.circuitId = '';
-          });
-          app.panels.splice(i, 1);
-          this.refreshCircuitSelects();
-          app._status('Panel removed');
-          app._render();
-          return;
-        }
-      }
-      for (let i = app.electricalSymbols.length - 1; i >= 0; i--) {
-        if (app.electricalSymbols[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.electricalSymbols.splice(i, 1); app._status('Symbol removed'); app._render(); return;
-        }
-      }
-      for (let i = app.wires.length - 1; i >= 0; i--) {
-        if (app.wires[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.wires.splice(i, 1); app._status('Wire removed'); app._render(); return;
-        }
-      }
-    } else if (app.activeLayer === 'plumbing') {
-      for (let i = app.plumbingSymbols.length - 1; i >= 0; i--) {
-        if (app.plumbingSymbols[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.plumbingSymbols.splice(i, 1); app._status('Symbol removed'); app._render(); return;
-        }
-      }
-      for (let i = app.pipes.length - 1; i >= 0; i--) {
-        if (app.pipes[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.pipes.splice(i, 1); app._status('Pipe removed'); app._render(); return;
-        }
-      }
-    } else if (app.activeLayer === 'furniture') {
-      for (let i = app.furnitureItems.length - 1; i >= 0; i--) {
-        if (app.furnitureItems[i].hitTest(wx, wy)) {
-          app._pushHistory(); app.furnitureItems.splice(i, 1); app._status('Furniture removed'); app._render(); return;
-        }
-      }
+    for (const spec of layerSpecs) {
+      const items = spec.getItems();
+      const index = this._hitIndex(items, wx, wy);
+      if (index < 0) continue;
+
+      const target = items[index];
+      app._pushHistory();
+      spec.erase(index, target);
+      this.syncUI();
+      app._status(spec.message);
+      app._render();
+      return;
     }
   }
 
   // ── Delete currently selected entity ─────────
   deleteSelected() {
     const app = this.app;
+    const specs = this._getDeleteSpecs();
+    for (const spec of specs) {
+      const target = spec.getSelected();
+      if (!target) continue;
 
-    if (app.selectedDoor) {
       app._pushHistory();
-      app.doors = app.doors.filter(d => d !== app.selectedDoor);
-      app.selectedDoor = null;
-      this.syncUI(); app._status('Door deleted'); app._render();
-    } else if (app.selectedWindow) {
-      app._pushHistory();
-      app.windows = app.windows.filter(w => w !== app.selectedWindow);
-      app.selectedWindow = null;
-      this.syncUI(); app._status('Window deleted'); app._render();
-    } else if (app.selectedLabel) {
-      app._pushHistory();
-      app.labels = app.labels.filter(l => l !== app.selectedLabel);
-      app.selectedLabel = null;
-      this.syncUI(); app._status('Label deleted'); app._render();
-    } else if (app.selectedStair) {
-      app._pushHistory();
-      app.stairs = app.stairs.filter(s => s !== app.selectedStair);
-      app.selectedStair = null;
-      this.syncUI(); app._status('Stair deleted'); app._render();
-    } else if (app.selectedWall) {
-      app._pushHistory();
-      app.doors = app.doors.filter(d => d.wall !== app.selectedWall);
-      app.windows = app.windows.filter(w => w.wall !== app.selectedWall);
-      app.walls = app.walls.filter(w => w !== app.selectedWall);
-      app.selectedWall = null;
-      this.syncUI(); app._status('Wall deleted'); app._render();
-    } else if (app.selectedFloor) {
-      app._pushHistory();
-      app.floors = app.floors.filter(f => f !== app.selectedFloor);
-      app.selectedFloor = null;
-      this.syncUI(); app._status('Floor deleted'); app._render();
-    } else if (app.selectedWire) {
-      app._pushHistory();
-      app.wires = app.wires.filter(w => w !== app.selectedWire);
-      app.selectedWire = null;
-      this.syncUI(); app._status('Wire deleted'); app._render();
-    } else if (app.selectedPanel) {
-      app._pushHistory();
-      const panelId = app.selectedPanel.id;
-      const panelCircuits = getCircuitsForPanel(app.circuits,panelId).map(c => c.id);
-      app.circuits = app.circuits.filter(c => c.panelId !== panelId);
-      app.electricalSymbols.forEach(sym => {
-        if (panelCircuits.includes(sym.circuitId)) sym.circuitId = '';
-      });
-      app.panels = app.panels.filter(p => p !== app.selectedPanel);
-      app.selectedPanel = null;
-      this.refreshCircuitSelects();
-      this.syncUI(); app._status('Panel deleted'); app._render();
-    } else if (app.selectedElectricalSymbol) {
-      app._pushHistory();
-      app.electricalSymbols = app.electricalSymbols.filter(s => s !== app.selectedElectricalSymbol);
-      app.selectedElectricalSymbol = null;
-      this.syncUI(); app._status('Symbol deleted'); app._render();
-    } else if (app.selectedPipe) {
-      app._pushHistory();
-      app.pipes = app.pipes.filter(p => p !== app.selectedPipe);
-      app.selectedPipe = null;
-      this.syncUI(); app._status('Pipe deleted'); app._render();
-    } else if (app.selectedPlumbingSymbol) {
-      app._pushHistory();
-      app.plumbingSymbols = app.plumbingSymbols.filter(s => s !== app.selectedPlumbingSymbol);
-      app.selectedPlumbingSymbol = null;
-      this.syncUI(); app._status('Symbol deleted'); app._render();
-    } else if (app.selectedFurniture) {
-      app._pushHistory();
-      const idx = app.furnitureItems.indexOf(app.selectedFurniture);
-      if (idx !== -1) app.furnitureItems.splice(idx, 1);
-      app.selectedFurniture = null;
-      this.syncUI(); app._status('Furniture deleted'); app._render();
+      spec.remove(target);
+      this.syncUI();
+      app._status(spec.message);
+      app._render();
+      return;
     }
+  }
+
+  _hitTest(items, wx, wy) {
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      if (items[i].hitTest(wx, wy)) return items[i];
+    }
+    return null;
+  }
+
+  _hitIndex(items, wx, wy) {
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      if (items[i].hitTest(wx, wy)) return i;
+    }
+    return -1;
+  }
+
+  _getSelectionSpecs() {
+    const app = this.app;
+    return {
+      structure: [
+        { getItems: () => app.doors, setSelected: (item) => { app.selectedDoor = item; } },
+        { getItems: () => app.windows, setSelected: (item) => { app.selectedWindow = item; } },
+        { getItems: () => app.labels, setSelected: (item) => { app.selectedLabel = item; } },
+        { getItems: () => app.stairs, setSelected: (item) => { app.selectedStair = item; } },
+        { getItems: () => app.walls, setSelected: (item) => { app.selectedWall = item; } },
+        {
+          getItems: () => app.floors,
+          when: () => !app.selectedWall,
+          setSelected: (item) => { app.selectedFloor = item; },
+        },
+      ],
+      electrical: [
+        { getItems: () => app.panels, setSelected: (item) => { app.selectedPanel = item; } },
+        { getItems: () => app.electricalSymbols, setSelected: (item) => { app.selectedElectricalSymbol = item; } },
+        { getItems: () => app.wires, setSelected: (item) => { app.selectedWire = item; } },
+      ],
+      plumbing: [
+        { getItems: () => app.plumbingSymbols, setSelected: (item) => { app.selectedPlumbingSymbol = item; } },
+        { getItems: () => app.pipes, setSelected: (item) => { app.selectedPipe = item; } },
+      ],
+      furniture: [
+        { getItems: () => app.furnitureItems, setSelected: (item) => { app.selectedFurniture = item; } },
+      ],
+    };
+  }
+
+  _cleanupPanel(target) {
+    const app = this.app;
+    const circuitIds = getCircuitsForPanel(app.circuits, target.id).map(c => c.id);
+    app.circuits = app.circuits.filter(c => c.panelId !== target.id);
+    app.electricalSymbols.forEach(sym => {
+      if (circuitIds.includes(sym.circuitId)) sym.circuitId = '';
+    });
+    this.refreshCircuitSelects();
+  }
+
+  _getEraseSpecs() {
+    const app = this.app;
+    return {
+      structure: [
+        {
+          getItems: () => app.doors,
+          erase: (_index, target) => {
+            app.doors.splice(_index, 1);
+            if (app.selectedDoor === target) app.selectedDoor = null;
+          },
+          message: 'Door deleted',
+        },
+        {
+          getItems: () => app.windows,
+          erase: (_index, target) => {
+            app.windows.splice(_index, 1);
+            if (app.selectedWindow === target) app.selectedWindow = null;
+          },
+          message: 'Window deleted',
+        },
+        {
+          getItems: () => app.labels,
+          erase: (_index, target) => {
+            app.labels.splice(_index, 1);
+            if (app.selectedLabel === target) app.selectedLabel = null;
+          },
+          message: 'Label deleted',
+        },
+        {
+          getItems: () => app.stairs,
+          erase: (_index, target) => {
+            app.stairs.splice(_index, 1);
+            if (app.selectedStair === target) app.selectedStair = null;
+          },
+          message: 'Stair deleted',
+        },
+        {
+          getItems: () => app.walls,
+          erase: (_index, target) => {
+            app.doors = app.doors.filter(d => d.wall !== target);
+            app.windows = app.windows.filter(w => w.wall !== target);
+            app.walls.splice(_index, 1);
+            if (app.selectedWall === target) app.selectedWall = null;
+            if (app.selectedDoor?.wall === target) app.selectedDoor = null;
+            if (app.selectedWindow?.wall === target) app.selectedWindow = null;
+          },
+          message: 'Wall deleted',
+        },
+        {
+          getItems: () => app.floors,
+          erase: (_index, target) => {
+            app.floors.splice(_index, 1);
+            if (app.selectedFloor === target) app.selectedFloor = null;
+          },
+          message: 'Floor deleted',
+        },
+      ],
+      electrical: [
+        {
+          getItems: () => app.panels,
+          erase: (_index, target) => {
+            this._cleanupPanel(target);
+            app.panels.splice(_index, 1);
+            if (app.selectedPanel === target) app.selectedPanel = null;
+          },
+          message: 'Panel deleted',
+        },
+        {
+          getItems: () => app.electricalSymbols,
+          erase: (_index, target) => {
+            app.electricalSymbols = app.electricalSymbols.filter(sym => sym !== target);
+            if (app.selectedElectricalSymbol === target) app.selectedElectricalSymbol = null;
+          },
+          message: 'Symbol deleted',
+        },
+        {
+          getItems: () => app.wires,
+          erase: (_index, target) => {
+            app.wires = app.wires.filter(wire => wire !== target);
+            if (app.selectedWire === target) app.selectedWire = null;
+          },
+          message: 'Wire deleted',
+        },
+      ],
+      plumbing: [
+        {
+          getItems: () => app.plumbingSymbols,
+          erase: (_index, target) => {
+            app.plumbingSymbols = app.plumbingSymbols.filter(sym => sym !== target);
+            if (app.selectedPlumbingSymbol === target) app.selectedPlumbingSymbol = null;
+          },
+          message: 'Symbol deleted',
+        },
+        {
+          getItems: () => app.pipes,
+          erase: (_index, target) => {
+            app.pipes = app.pipes.filter(pipe => pipe !== target);
+            if (app.selectedPipe === target) app.selectedPipe = null;
+          },
+          message: 'Pipe deleted',
+        },
+      ],
+      furniture: [
+        {
+          getItems: () => app.furnitureItems,
+          erase: (_index, target) => {
+            app.furnitureItems = app.furnitureItems.filter(item => item !== target);
+            if (app.selectedFurniture === target) app.selectedFurniture = null;
+          },
+          message: 'Furniture deleted',
+        },
+      ],
+    };
+  }
+
+  _getDeleteSpecs() {
+    const app = this.app;
+    return [
+      {
+        getSelected: () => app.selectedDoor,
+        remove: (target) => {
+          app.doors = app.doors.filter(d => d !== target);
+          app.selectedDoor = null;
+        },
+        message: 'Door deleted',
+      },
+      {
+        getSelected: () => app.selectedWindow,
+        remove: (target) => {
+          app.windows = app.windows.filter(w => w !== target);
+          app.selectedWindow = null;
+        },
+        message: 'Window deleted',
+      },
+      {
+        getSelected: () => app.selectedLabel,
+        remove: (target) => {
+          app.labels = app.labels.filter(l => l !== target);
+          app.selectedLabel = null;
+        },
+        message: 'Label deleted',
+      },
+      {
+        getSelected: () => app.selectedStair,
+        remove: (target) => {
+          app.stairs = app.stairs.filter(s => s !== target);
+          app.selectedStair = null;
+        },
+        message: 'Stair deleted',
+      },
+      {
+        getSelected: () => app.selectedWall,
+        remove: (target) => {
+          app.doors = app.doors.filter(d => d.wall !== target);
+          app.windows = app.windows.filter(w => w.wall !== target);
+          app.walls = app.walls.filter(w => w !== target);
+          if (app.selectedDoor?.wall === target) app.selectedDoor = null;
+          if (app.selectedWindow?.wall === target) app.selectedWindow = null;
+          app.selectedWall = null;
+        },
+        message: 'Wall deleted',
+      },
+      {
+        getSelected: () => app.selectedFloor,
+        remove: (target) => {
+          app.floors = app.floors.filter(f => f !== target);
+          app.selectedFloor = null;
+        },
+        message: 'Floor deleted',
+      },
+      {
+        getSelected: () => app.selectedWire,
+        remove: (target) => {
+          app.wires = app.wires.filter(w => w !== target);
+          app.selectedWire = null;
+        },
+        message: 'Wire deleted',
+      },
+      {
+        getSelected: () => app.selectedPanel,
+        remove: (target) => {
+          this._cleanupPanel(target);
+          app.panels = app.panels.filter(p => p !== target);
+          app.selectedPanel = null;
+        },
+        message: 'Panel deleted',
+      },
+      {
+        getSelected: () => app.selectedElectricalSymbol,
+        remove: (target) => {
+          app.electricalSymbols = app.electricalSymbols.filter(s => s !== target);
+          app.selectedElectricalSymbol = null;
+        },
+        message: 'Symbol deleted',
+      },
+      {
+        getSelected: () => app.selectedPipe,
+        remove: (target) => {
+          app.pipes = app.pipes.filter(p => p !== target);
+          app.selectedPipe = null;
+        },
+        message: 'Pipe deleted',
+      },
+      {
+        getSelected: () => app.selectedPlumbingSymbol,
+        remove: (target) => {
+          app.plumbingSymbols = app.plumbingSymbols.filter(s => s !== target);
+          app.selectedPlumbingSymbol = null;
+        },
+        message: 'Symbol deleted',
+      },
+      {
+        getSelected: () => app.selectedFurniture,
+        remove: (target) => {
+          app.furnitureItems = app.furnitureItems.filter(item => item !== target);
+          app.selectedFurniture = null;
+        },
+        message: 'Furniture deleted',
+      },
+    ];
   }
 
   // ── Sync selection panel UI ──────────────────

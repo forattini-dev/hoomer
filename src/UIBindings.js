@@ -14,11 +14,36 @@ function bindBtnGroup(app, selector, callback) {
   }
 }
 
+function bindSelectedOptionGroup(app, selector, getTarget, mutate, afterUpdate) {
+  for (const btn of app.$$(selector)) {
+    btn.addEventListener('click', () => {
+      const target = getTarget();
+      if (!target) return;
+      app._pushHistory();
+      mutate(target, btn);
+      if (afterUpdate) afterUpdate(target, btn);
+      app._syncSelection();
+      app._render();
+    });
+  }
+}
+
+function bindIfExists(app, idOrSelector, event, handler, options) {
+  const el = app.$(idOrSelector);
+  if (!el) return;
+  el.addEventListener(event, handler, options);
+}
+
 export function bindUI(app) {
   // Tool buttons
   for (const btn of app.$$('.tool-btn')) {
     btn.addEventListener('click', () => app._setTool(btn.dataset.tool));
   }
+  bindIfExists(app, 'btn-open-mobile-tools', 'click', () => app._openMobilePanel('tools'));
+  bindIfExists(app, 'btn-open-mobile-props', 'click', () => app._openMobilePanel('props'));
+  bindIfExists(app, 'btn-mobile-close-tools', 'click', () => app._closeMobilePanel());
+  bindIfExists(app, 'btn-mobile-close-props', 'click', () => app._closeMobilePanel());
+  bindIfExists(app, 'mobile-panel-backdrop', 'click', () => app._closeMobilePanel());
 
   // ── Tool Property Defaults ─────────────────
 
@@ -69,12 +94,11 @@ export function bindUI(app) {
   // Wire gauge
   bindBtnGroup(app, '#wire-gauge-group .prop-btn', btn => { app.wireGauge = parseFloat(btn.dataset.value); });
   // Panel name prefix
-  const panelNamePrefixInput = app.$('panel-name-prefix');
-  if (panelNamePrefixInput) {
-    panelNamePrefixInput.addEventListener('input', () => {
-      app.panelNamePrefix = panelNamePrefixInput.value || 'QD';
-    });
-  }
+  bindIfExists(app, 'panel-name-prefix', 'input', () => {
+    const panelNamePrefixInput = app.$('panel-name-prefix');
+    if (!panelNamePrefixInput) return;
+    app.panelNamePrefix = panelNamePrefixInput.value || 'QD';
+  });
   bindBtnGroup(app, '#panel-voltage-group .prop-btn', btn => { app.panelVoltage = parseInt(btn.dataset.value); });
   bindBtnGroup(app, '#panel-phases-group .prop-btn', btn => { app.panelPhases = parseInt(btn.dataset.value); });
   bindBtnGroup(app, '#panel-main-breaker-group .prop-btn', btn => { app.panelMainBreakerA = parseInt(btn.dataset.value); });
@@ -82,19 +106,17 @@ export function bindUI(app) {
   bindBtnGroup(app, '#elec-symbol-type-group .prop-btn', btn => { app.electricalSymbolType = btn.dataset.value; });
   // Electrical symbol rotation
   bindBtnGroup(app, '#elec-symbol-rotation-group .prop-btn', btn => { app.electricalSymbolRotation = parseInt(btn.dataset.value); });
-  const elecLoadInput = app.$('elec-load-a');
-  if (elecLoadInput) {
-    elecLoadInput.addEventListener('change', () => {
-      app.electricalLoadA = Math.max(0.1, parseFloat(elecLoadInput.value) || CONFIG.DEFAULT_SYMBOL_AMPERAGE_A);
-      elecLoadInput.value = String(app.electricalLoadA);
-    });
-  }
-  const elecCircuitSelect = app.$('elec-circuit-select');
-  if (elecCircuitSelect) {
-    elecCircuitSelect.addEventListener('change', () => {
-      app.electricalCircuitId = elecCircuitSelect.value;
-    });
-  }
+  bindIfExists(app, 'elec-load-a', 'change', () => {
+    const elecLoadInput = app.$('elec-load-a');
+    if (!elecLoadInput) return;
+    app.electricalLoadA = Math.max(0.1, parseFloat(elecLoadInput.value) || CONFIG.DEFAULT_SYMBOL_AMPERAGE_A);
+    elecLoadInput.value = String(app.electricalLoadA);
+  });
+  bindIfExists(app, 'elec-circuit-select', 'change', () => {
+    const elecCircuitSelect = app.$('elec-circuit-select');
+    if (!elecCircuitSelect) return;
+    app.electricalCircuitId = elecCircuitSelect.value;
+  });
 
   // ── Plumbing Tool Defaults ─────────────────
 
@@ -112,47 +134,30 @@ export function bindUI(app) {
   // ── Selection Property Controls ────────────
 
   // Selected wall thickness
-  for (const btn of app.$$('#sel-thickness-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedWall) return;
-      app._pushHistory(); app.selectedWall.thickness = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-thickness-group .prop-btn', () => app.selectedWall, (wall, btn) => {
+    wall.thickness = parseInt(btn.dataset.value);
+  });
   // Selected wall material
-  for (const btn of app.$$('#sel-material-group .material-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedWall) return;
-      app._pushHistory(); app.selectedWall.material = btn.dataset.material;
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-material-group .material-btn', () => app.selectedWall, (wall, btn) => {
+    wall.material = btn.dataset.material;
+  });
 
   // Selected door controls
-  for (const btn of app.$$('#sel-door-type-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedDoor) return;
-      app._pushHistory(); app.selectedDoor.doorType = btn.dataset.value;
-      app.$$('#sel-door-type-group .prop-btn').forEach(b => b.classList.toggle('active', b.dataset.value === btn.dataset.value));
-      app._syncSelection(); app._render();
-    });
-  }
-  for (const btn of app.$$('#sel-door-width-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedDoor) return;
-      app._pushHistory(); app.selectedDoor.width = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
-  const flipHinge = app.$('btn-flip-hinge');
-  if (flipHinge) flipHinge.addEventListener('click', () => {
+  bindSelectedOptionGroup(app, '#sel-door-type-group .prop-btn', () => app.selectedDoor, (door, btn) => {
+    door.doorType = btn.dataset.value;
+    app.$$('#sel-door-type-group .prop-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.value === btn.dataset.value));
+  });
+  bindSelectedOptionGroup(app, '#sel-door-width-group .prop-btn', () => app.selectedDoor, (door, btn) => {
+    door.width = parseInt(btn.dataset.value);
+  });
+  bindIfExists(app, 'btn-flip-hinge', 'click', () => {
     if (!app.selectedDoor) return;
     app._pushHistory();
     app.selectedDoor.hingeSide = app.selectedDoor.hingeSide === 'left' ? 'right' : 'left';
     app._syncSelection(); app._render();
   });
-  const flipOpen = app.$('btn-flip-open');
-  if (flipOpen) flipOpen.addEventListener('click', () => {
+  bindIfExists(app, 'btn-flip-open', 'click', () => {
     if (!app.selectedDoor) return;
     app._pushHistory();
     app.selectedDoor.openDir *= -1;
@@ -160,158 +165,112 @@ export function bindUI(app) {
   });
 
   // Selected window controls
-  for (const btn of app.$$('#sel-window-type-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedWindow) return;
-      app._pushHistory(); app.selectedWindow.windowType = btn.dataset.value;
-      app.$$('#sel-window-type-group .prop-btn').forEach(b => b.classList.toggle('active', b.dataset.value === btn.dataset.value));
-      app._syncSelection(); app._render();
-    });
-  }
-  for (const btn of app.$$('#sel-window-width-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedWindow) return;
-      app._pushHistory(); app.selectedWindow.width = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-window-type-group .prop-btn', () => app.selectedWindow, (win, btn) => {
+    win.windowType = btn.dataset.value;
+    app.$$('#sel-window-type-group .prop-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.value === btn.dataset.value));
+  });
+  bindSelectedOptionGroup(app, '#sel-window-width-group .prop-btn', () => app.selectedWindow, (win, btn) => {
+    win.width = parseInt(btn.dataset.value);
+  });
 
   // Selected stair controls
-  for (const btn of app.$$('#sel-stair-rotation-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedStair) return;
-      app._pushHistory(); app.selectedStair.rotation = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-stair-rotation-group .prop-btn', () => app.selectedStair, (stair, btn) => {
+    stair.rotation = parseInt(btn.dataset.value);
+  });
 
   // Selected label controls
-  const selLabelText = app.$('sel-label-text');
-  if (selLabelText) {
-    selLabelText.addEventListener('input', () => {
-      if (!app.selectedLabel) return;
-      if (!app._labelEditActive) {
-        app._pushHistory();
-        app._labelEditActive = true;
-      }
-      app.selectedLabel.text = selLabelText.value;
-      app._render();
-    });
-    selLabelText.addEventListener('blur', () => {
-      app._labelEditActive = false;
-    });
-    selLabelText.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        selLabelText.blur();
-      }
-    });
-  }
-  for (const btn of app.$$('#sel-label-fontsize-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedLabel) return;
-      app._pushHistory(); app.selectedLabel.fontSize = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindIfExists(app, 'sel-label-text', 'input', () => {
+    const selLabelText = app.$('sel-label-text');
+    if (!selLabelText || !app.selectedLabel) return;
+    if (!app._labelEditActive) {
+      app._pushHistory();
+      app._labelEditActive = true;
+    }
+    app.selectedLabel.text = selLabelText.value;
+    app._render();
+  });
+  bindIfExists(app, 'sel-label-text', 'blur', () => {
+    app._labelEditActive = false;
+  });
+  bindIfExists(app, 'sel-label-text', 'keydown', (e) => {
+    const selLabelText = app.$('sel-label-text');
+    if (!selLabelText) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      selLabelText.blur();
+    }
+  });
+  bindSelectedOptionGroup(app, '#sel-label-fontsize-group .prop-btn', () => app.selectedLabel, (label, btn) => {
+    label.fontSize = parseInt(btn.dataset.value);
+  });
 
   // Selected wire gauge
-  for (const btn of app.$$('#sel-wire-gauge-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedWire) return;
-      app._pushHistory(); app.selectedWire.gauge = parseFloat(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-wire-gauge-group .prop-btn', () => app.selectedWire, (wire, btn) => {
+    wire.gauge = parseFloat(btn.dataset.value);
+  });
 
   // Selected panel controls
-  const selPanelName = app.$('sel-panel-name');
-  if (selPanelName) {
-    selPanelName.addEventListener('change', () => {
-      if (!app.selectedPanel) return;
-      app._pushHistory();
-      app.selectedPanel.name = selPanelName.value || app.selectedPanel.name;
-      app._syncSelection();
-      app._render();
-    });
-  }
-  const selPanelMainBreakerInput = app.$('sel-panel-main-breaker-input');
-  if (selPanelMainBreakerInput) {
-    selPanelMainBreakerInput.addEventListener('change', () => {
-      if (!app.selectedPanel) return;
-      app._pushHistory();
-      app.selectedPanel.mainBreakerA = Math.max(1, parseInt(selPanelMainBreakerInput.value) || app.selectedPanel.mainBreakerA);
-      selPanelMainBreakerInput.value = String(app.selectedPanel.mainBreakerA);
-      app._syncSelection();
-      app._render();
-    });
-  }
-  const addCircuitBtn = app.$('btn-panel-add-circuit');
-  if (addCircuitBtn) {
-    addCircuitBtn.addEventListener('click', () => {
-      if (!app.selectedPanel) return;
-      app._addCircuitToPanel(app.selectedPanel);
-    });
-  }
+  bindIfExists(app, 'sel-panel-name', 'change', () => {
+    const selPanelName = app.$('sel-panel-name');
+    if (!selPanelName || !app.selectedPanel) return;
+    app._pushHistory();
+    app.selectedPanel.name = selPanelName.value || app.selectedPanel.name;
+    app._syncSelection();
+    app._render();
+  });
+  bindIfExists(app, 'sel-panel-main-breaker-input', 'change', () => {
+    const selPanelMainBreakerInput = app.$('sel-panel-main-breaker-input');
+    if (!selPanelMainBreakerInput || !app.selectedPanel) return;
+    app._pushHistory();
+    app.selectedPanel.mainBreakerA = Math.max(1, parseInt(selPanelMainBreakerInput.value) || app.selectedPanel.mainBreakerA);
+    selPanelMainBreakerInput.value = String(app.selectedPanel.mainBreakerA);
+    app._syncSelection();
+    app._render();
+  });
+  bindIfExists(app, 'btn-panel-add-circuit', 'click', () => {
+    if (!app.selectedPanel) return;
+    app._addCircuitToPanel(app.selectedPanel);
+  });
 
   // Selected electrical symbol load/circuit
-  const selElecLoadInput = app.$('sel-electrical-load-a');
-  if (selElecLoadInput) {
-    selElecLoadInput.addEventListener('change', () => {
-      if (!app.selectedElectricalSymbol) return;
-      app._pushHistory();
-      app.selectedElectricalSymbol.amperageA = Math.max(0.1, parseFloat(selElecLoadInput.value) || CONFIG.DEFAULT_SYMBOL_AMPERAGE_A);
-      selElecLoadInput.value = String(app.selectedElectricalSymbol.amperageA);
-      app._syncSelection();
-      app._render();
-    });
-  }
-  const selElecCircuitSelect = app.$('sel-electrical-circuit-select');
-  if (selElecCircuitSelect) {
-    selElecCircuitSelect.addEventListener('change', () => {
-      if (!app.selectedElectricalSymbol) return;
-      app._pushHistory();
-      app.selectedElectricalSymbol.circuitId = selElecCircuitSelect.value;
-      app._syncSelection();
-      app._render();
-    });
-  }
+  bindIfExists(app, 'sel-electrical-load-a', 'change', () => {
+    const selElecLoadInput = app.$('sel-electrical-load-a');
+    if (!selElecLoadInput || !app.selectedElectricalSymbol) return;
+    app._pushHistory();
+    app.selectedElectricalSymbol.amperageA = Math.max(0.1, parseFloat(selElecLoadInput.value) || CONFIG.DEFAULT_SYMBOL_AMPERAGE_A);
+    selElecLoadInput.value = String(app.selectedElectricalSymbol.amperageA);
+    app._syncSelection();
+    app._render();
+  });
+  bindIfExists(app, 'sel-electrical-circuit-select', 'change', () => {
+    const selElecCircuitSelect = app.$('sel-electrical-circuit-select');
+    if (!selElecCircuitSelect || !app.selectedElectricalSymbol) return;
+    app._pushHistory();
+    app.selectedElectricalSymbol.circuitId = selElecCircuitSelect.value;
+    app._syncSelection();
+    app._render();
+  });
 
   // Selected pipe flow direction
-  for (const btn of app.$$('#sel-pipe-flow-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedPipe) return;
-      app._pushHistory(); app.selectedPipe.flowDir = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-pipe-flow-group .prop-btn', () => app.selectedPipe, (pipe, btn) => {
+    pipe.flowDir = parseInt(btn.dataset.value);
+  });
 
   // Selected electrical symbol rotation
-  for (const btn of app.$$('#sel-electrical-symbol-rotation-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedElectricalSymbol) return;
-      app._pushHistory(); app.selectedElectricalSymbol.rotation = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-electrical-symbol-rotation-group .prop-btn', () => app.selectedElectricalSymbol, (symbol, btn) => {
+    symbol.rotation = parseInt(btn.dataset.value);
+  });
 
   // Selected plumbing symbol rotation
-  for (const btn of app.$$('#sel-plumbing-symbol-rotation-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedPlumbingSymbol) return;
-      app._pushHistory(); app.selectedPlumbingSymbol.rotation = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-plumbing-symbol-rotation-group .prop-btn', () => app.selectedPlumbingSymbol, (symbol, btn) => {
+    symbol.rotation = parseInt(btn.dataset.value);
+  });
 
   // Selected furniture rotation
-  for (const btn of app.$$('#sel-furniture-rotation-group .prop-btn')) {
-    btn.addEventListener('click', () => {
-      if (!app.selectedFurniture) return;
-      app._pushHistory(); app.selectedFurniture.rotation = parseInt(btn.dataset.value);
-      app._syncSelection(); app._render();
-    });
-  }
+  bindSelectedOptionGroup(app, '#sel-furniture-rotation-group .prop-btn', () => app.selectedFurniture, (furniture, btn) => {
+    furniture.rotation = parseInt(btn.dataset.value);
+  });
 
   // Delete buttons
   for (const btn of app.$$('.btn-delete-selected')) {
@@ -320,21 +279,21 @@ export function bindUI(app) {
 
   // ── Snap & Grid ────────────────────────────
 
-  app.$('grid-size').addEventListener('change', e => { app.gridSize = parseInt(e.target.value); app._render(); });
-  app.$('snap-grid').addEventListener('change', e => { app.snapGrid = e.target.checked; });
-  app.$('snap-angle').addEventListener('change', e => { app.snapAngle = e.target.checked; });
-  app.$('snap-angle-deg').addEventListener('change', e => { app.snapAngleDeg = parseInt(e.target.value); });
-  app.$('snap-endpoint').addEventListener('change', e => { app.snapEndpoint = e.target.checked; });
+  bindIfExists(app, 'grid-size', 'change', e => { app.gridSize = parseInt(e.target.value); app._render(); });
+  bindIfExists(app, 'snap-grid', 'change', e => { app.snapGrid = e.target.checked; });
+  bindIfExists(app, 'snap-angle', 'change', e => { app.snapAngle = e.target.checked; });
+  bindIfExists(app, 'snap-angle-deg', 'change', e => { app.snapAngleDeg = parseInt(e.target.value); });
+  bindIfExists(app, 'snap-endpoint', 'change', e => { app.snapEndpoint = e.target.checked; });
 
   // ── History ────────────────────────────────
 
-  app.$('btn-undo').addEventListener('click', () => app._undo());
-  app.$('btn-redo').addEventListener('click', () => app._redo());
+  bindIfExists(app, 'btn-undo', 'click', () => app._undo());
+  bindIfExists(app, 'btn-redo', 'click', () => app._redo());
 
   // ── 3D ─────────────────────────────────────
 
-  app.$('btn-3d').addEventListener('click', () => app._toggle3D());
-  app.$('btn-nav-mode').addEventListener('click', () => app._toggleNavMode());
+  bindIfExists(app, 'btn-3d', 'click', () => app._toggle3D());
+  bindIfExists(app, 'btn-nav-mode', 'click', () => app._toggleNavMode());
 
   // ── Tab switching ──────────────────────────
 
@@ -344,32 +303,32 @@ export function bindUI(app) {
 
   // ── Costs tab ──────────────────────────────
 
-  app.$('costs-copy').addEventListener('click', () => app.costsView.copyClipboard());
-  app.$('costs-csv').addEventListener('click', () => app.costsView.downloadCSV());
+  bindIfExists(app, 'costs-copy', 'click', () => app.costsView.copyClipboard());
+  bindIfExists(app, 'costs-csv', 'click', () => app.costsView.downloadCSV());
 
   // ── Stories ────────────────────────────────
 
-  app.$('btn-add-story').addEventListener('click', () => app._addStory());
-  app.$('btn-remove-story').addEventListener('click', () => app._removeStory());
+  bindIfExists(app, 'btn-add-story', 'click', () => app._addStory());
+  bindIfExists(app, 'btn-remove-story', 'click', () => app._removeStory());
 
   // ── Project tab ────────────────────────────
 
   // Terrain
-  app.$('proj-terrain-width').addEventListener('change', e => {
+  bindIfExists(app, 'proj-terrain-width', 'change', e => {
     const nextWidth = Math.max(100, Number.isFinite(parseFloat(e.target.value))
       ? parseFloat(e.target.value) * 100
       : app.terrainWidth);
     app.terrainWidth = Number.isFinite(nextWidth) ? nextWidth : CONFIG.DEFAULT_TERRAIN_WIDTH;
     app._centerView(); app._render(); app._schedulePersist();
   });
-  app.$('proj-terrain-height').addEventListener('change', e => {
+  bindIfExists(app, 'proj-terrain-height', 'change', e => {
     const nextHeight = Math.max(100, Number.isFinite(parseFloat(e.target.value))
       ? parseFloat(e.target.value) * 100
       : app.terrainHeight);
     app.terrainHeight = Number.isFinite(nextHeight) ? nextHeight : CONFIG.DEFAULT_TERRAIN_HEIGHT;
     app._centerView(); app._render(); app._schedulePersist();
   });
-  app.$('proj-show-terrain').addEventListener('change', e => {
+  bindIfExists(app, 'proj-show-terrain', 'change', e => {
     app.showTerrain = e.target.checked; app._render(); app._schedulePersist();
   });
 
@@ -380,26 +339,32 @@ export function bindUI(app) {
   });
 
   // Name
-  app.$('project-name').addEventListener('change', e => {
+  bindIfExists(app, 'project-name', 'change', e => {
     app.projectName = e.target.value || 'Untitled Project';
     app._schedulePersist();
   });
 
   // Export/import
-  app.$('proj-export-png').addEventListener('click', () => app._exportPNG());
-  app.$('proj-export-json').addEventListener('click', () => app._exportJSON());
-  app.$('proj-import-json').addEventListener('click', () => app.$('proj-import-file').click());
-  app.$('proj-import-file').addEventListener('change', e => app._importJSON(e));
+  bindIfExists(app, 'proj-export-png', 'click', () => app._exportPNG());
+  bindIfExists(app, 'proj-export-json', 'click', () => app._exportJSON());
+  bindIfExists(app, 'proj-import-json', 'click', () => {
+    const importInput = app.$('proj-import-file');
+    if (importInput) importInput.click();
+  });
+  bindIfExists(app, 'proj-import-file', 'change', e => app._importJSON(e));
 
-  app.$('btn-plan-review').addEventListener('click', () => app.runPlanReview());
+  bindIfExists(app, 'btn-plan-review', 'click', () => app.runPlanReview());
 
   // Share
-  app.$('share-encrypt').addEventListener('change', e => {
-    app.$('share-password-row').style.display = e.target.checked ? '' : 'none';
+  bindIfExists(app, 'share-encrypt', 'change', e => {
+    const row = app.$('share-password-row');
+    if (!row) return;
+    row.style.display = e.target.checked ? '' : 'none';
   });
-  app.$('btn-share').addEventListener('click', () => app._shareProject());
-  app.$('share-url').addEventListener('click', () => {
+  bindIfExists(app, 'btn-share', 'click', () => app._shareProject());
+  bindIfExists(app, 'share-url', 'click', () => {
     const input = app.$('share-url');
+    if (!input) return;
     input.select();
     navigator.clipboard.writeText(input.value);
     app._status('Share link copied');

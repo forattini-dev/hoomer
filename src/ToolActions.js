@@ -105,50 +105,87 @@ export class ToolActions {
 
   // ── Door ───────────────────────────────────────
   addDoorAt(wx, wy) {
-    const app = this.app;
-    let targetWall = null;
-    for (let i = app.walls.length - 1; i >= 0; i--) {
-      if (app.walls[i].hitTest(wx, wy)) { targetWall = app.walls[i]; break; }
-    }
-    if (!targetWall) { app._status('Click on a wall to place the door'); return; }
-
-    const wallLen = targetWall.length;
-    if (wallLen < app.doorWidth) { app._status('Wall too short for this door'); return; }
-
-    const dx = targetWall.x2 - targetWall.x1;
-    const dy = targetWall.y2 - targetWall.y1;
-    const lenSq = dx * dx + dy * dy;
-    let t = ((wx - targetWall.x1) * dx + (wy - targetWall.y1) * dy) / lenSq;
-    const halfRatio = (app.doorWidth / 2) / wallLen;
-    t = Math.max(halfRatio, Math.min(1 - halfRatio, t));
-
-    app._pushHistory();
-    app.doors.push(new Door(targetWall, t, app.doorWidth, app.doorHinge, app.doorOpenDir, app.doorType));
-    app._status('Door added');
+    this._addWallOpening({
+      wx,
+      wy,
+      width: this.app.doorWidth,
+      tooShortLabel: 'Wall too short for this door',
+      missingLabel: 'Click on a wall to place the door',
+      successLabel: 'Door added',
+      onCreate: (wall, ratio) => new Door(
+        wall,
+        ratio,
+        this.app.doorWidth,
+        this.app.doorHinge,
+        this.app.doorOpenDir,
+        this.app.doorType,
+      ),
+      onInsert: (opening) => this.app.doors.push(opening),
+    });
   }
 
   // ── Window ─────────────────────────────────────
   addWindowAt(wx, wy) {
+    this._addWallOpening({
+      wx,
+      wy,
+      width: this.app.windowWidth,
+      tooShortLabel: 'Wall too short for this window',
+      missingLabel: 'Click on a wall to place the window',
+      successLabel: 'Window added',
+      onCreate: (wall, ratio) => new Window(
+        wall,
+        ratio,
+        this.app.windowWidth,
+        this.app.windowType,
+      ),
+      onInsert: (opening) => this.app.windows.push(opening),
+    });
+  }
+
+  _findWallAtPoint(wx, wy) {
     const app = this.app;
-    let targetWall = null;
     for (let i = app.walls.length - 1; i >= 0; i--) {
-      if (app.walls[i].hitTest(wx, wy)) { targetWall = app.walls[i]; break; }
+      if (app.walls[i].hitTest(wx, wy)) return app.walls[i];
     }
-    if (!targetWall) { app._status('Click on a wall to place the window'); return; }
+    return null;
+  }
+
+  _addWallOpening({
+    wx,
+    wy,
+    width,
+    tooShortLabel,
+    missingLabel,
+    successLabel,
+    onCreate,
+    onInsert,
+  }) {
+    const app = this.app;
+    const targetWall = this._findWallAtPoint(wx, wy);
+    if (!targetWall) {
+      app._status(missingLabel);
+      return;
+    }
 
     const wallLen = targetWall.length;
-    if (wallLen < app.windowWidth) { app._status('Wall too short for this window'); return; }
+    if (wallLen < width) {
+      app._status(tooShortLabel);
+      return;
+    }
 
     const dx = targetWall.x2 - targetWall.x1;
     const dy = targetWall.y2 - targetWall.y1;
     const lenSq = dx * dx + dy * dy;
     let t = ((wx - targetWall.x1) * dx + (wy - targetWall.y1) * dy) / lenSq;
-    const halfRatio = (app.windowWidth / 2) / wallLen;
+    const halfRatio = (width / 2) / wallLen;
     t = Math.max(halfRatio, Math.min(1 - halfRatio, t));
 
     app._pushHistory();
-    app.windows.push(new Window(targetWall, t, app.windowWidth, app.windowType));
-    app._status('Window added');
+    const opening = onCreate(targetWall, t);
+    if (!opening) return;
+    onInsert(opening);
+    app._status(successLabel);
   }
 
   // ── Stair ──────────────────────────────────────

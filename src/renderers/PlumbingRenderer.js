@@ -3,7 +3,7 @@
 
 import { CONFIG } from '../config.js';
 import { drawPlumbSymbolShape } from '../PlumbingShapes.js';
-import { drawTextWithBg } from './helpers.js';
+import { drawTextWithBg, drawSelectionPolyline, drawSelectionCircle } from './helpers.js';
 
 const C = CONFIG.COLORS;
 const { SELECTION } = C;
@@ -66,16 +66,7 @@ export function drawPipe(ctx, pipe, isSelected, zoom) {
 
   // Selection highlight
   if (isSelected) {
-    ctx.setLineDash([4 / zoom, 3 / zoom]);
-    ctx.strokeStyle = SELECTION;
-    ctx.lineWidth = 1 / zoom;
-    ctx.beginPath();
-    ctx.moveTo(pipe.points[0].x, pipe.points[0].y);
-    for (let i = 1; i < pipe.points.length; i++) {
-      ctx.lineTo(pipe.points[i].x, pipe.points[i].y);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
+    drawSelectionPolyline(ctx, pipe.points, zoom);
   }
 
   ctx.restore();
@@ -144,14 +135,6 @@ export function drawPlumbingSymbol(ctx, sym, isSelected, zoom) {
 
   // Selection highlight
   if (isSelected) {
-    ctx.save();
-    ctx.strokeStyle = SELECTION;
-    ctx.lineWidth = 1 / zoom;
-    ctx.setLineDash([4 / zoom, 3 / zoom]);
-    ctx.beginPath();
-    ctx.arc(sym.x, sym.y, 16 / zoom, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
+    drawSelectionCircle(ctx, sym.x, sym.y, 16 / zoom, zoom);
   }
 }

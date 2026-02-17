@@ -20,6 +20,8 @@ ${storyLayerRow}
     <main>
 ${toolsPanel}
 
+      <div id="mobile-panel-backdrop" aria-hidden="true"></div>
+
     <div id="canvas-container">
       <canvas id="main-canvas"></canvas>
       <div id="layer-fab"></div>

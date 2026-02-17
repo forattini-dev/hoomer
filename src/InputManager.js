@@ -32,6 +32,21 @@ export class InputManager {
     return { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
   }
 
+  _isInsideCanvas(sx, sy) {
+    const rect = this.canvas.getBoundingClientRect();
+    return sx >= 0 && sy >= 0 && sx <= rect.width && sy <= rect.height;
+  }
+
+  _pointerToWorld(sx, sy) {
+    const world = this.screenToWorld(sx, sy);
+    return { world, snapped: this._snap(world.x, world.y) };
+  }
+
+  _syncPointerMove(world, snapped) {
+    this.app.mouseWorld = snapped;
+    this.app._handleCanvasMove(world, snapped);
+  }
+
   screenToWorld(sx, sy) {
     return {
       x: (sx - this.app.panX) / this.app.zoom,
@@ -174,10 +189,8 @@ export class InputManager {
       return;
     }
 
-    const world = this.screenToWorld(sx, sy);
-    const snapped = this._snap(world.x, world.y);
-    this.app.mouseWorld = snapped;
-    this.app._handleCanvasMove(world, snapped);
+    const { world, snapped } = this._pointerToWorld(sx, sy);
+    this._syncPointerMove(world, snapped);
   }
 
   _onMouseUp() {
@@ -235,11 +248,9 @@ export class InputManager {
       const rect = this.canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
-      if (sx >= 0 && sy >= 0 && sx <= rect.width && sy <= rect.height) {
-        const world = this.screenToWorld(sx, sy);
-        const snapped = this._snap(world.x, world.y);
-        this.app.mouseWorld = snapped;
-        this.app._handleCanvasMove(world, snapped);
+      if (this._isInsideCanvas(sx, sy)) {
+        const { world, snapped } = this._pointerToWorld(sx, sy);
+        this._syncPointerMove(world, snapped);
       }
       return;
     }
@@ -269,15 +280,14 @@ export class InputManager {
     if (!this._primaryPointerId || e.pointerId !== this._primaryPointerId) return;
 
     const { sx, sy } = { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
-    const world = this.screenToWorld(sx, sy);
-    const snapped = this._snap(world.x, world.y);
+    const { world, snapped } = this._pointerToWorld(sx, sy);
     if (this.isPanning) {
       this.app.panX = this.panStart.panX + (e.clientX - this.panStart.x);
       this.app.panY = this.panStart.panY + (e.clientY - this.panStart.y);
       this.app._render();
       return;
     }
-    this.app._handleCanvasMove(world, snapped);
+    this._syncPointerMove(world, snapped);
   }
 
   _onPointerUp(e) {

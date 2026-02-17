@@ -38,6 +38,10 @@ export const creativeToolbar = `
       <div class="toolbar-right">
         <button id="btn-3d" title="Toggle 3D View (0)">3D</button>
         <button id="btn-nav-mode" title="Orbit/Walk" style="display:none">Orbit</button>
+        <div class="mobile-panel-controls">
+          <button id="btn-open-mobile-tools" class="mobile-panel-toggle" title="Abrir ferramentas">Tools</button>
+          <button id="btn-open-mobile-props" class="mobile-panel-toggle" title="Abrir propriedades">Props</button>
+        </div>
       </div>
     </div>`;
 

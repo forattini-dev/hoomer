@@ -104,7 +104,6 @@ export const CONFIG = {
   },
   HIT_MARGIN: 5,
   HIT_MARGIN_LINE: 6,
-  SCALE: 1,
   DEFAULT_GRID: 10,
   MAJOR_GRID_MULT: 5,
   DEFAULT_WALL_THICKNESS: 15,
@@ -131,6 +130,24 @@ export const CONFIG = {
   DEFAULT_DOOR_HEIGHT: 210,            // 2.10m (cm)
   DEFAULT_WINDOW_HEIGHT: 120,          // 1.20m (cm)
   DEFAULT_WINDOW_SILL_HEIGHT: 90,      // 0.90m sill (cm)
+
+  // ── Roof Defaults ─────────────────────────────
+  DEFAULT_ROOF_PITCH: 25,            // degrees
+  DEFAULT_ROOF_OVERHANG: 30,         // cm (eaves)
+  DEFAULT_ROOF_MATERIAL: 'tiles',
+  ROOF_STYLES: ['flat', 'gable', 'hip', 'shed'],
+  ROOF_STYLE_LABELS: {
+    flat: 'Flat',
+    gable: 'Gable',
+    hip: 'Hip',
+    shed: 'Shed',
+  },
+  ROOF_MATERIALS: ['tiles', 'slate', 'metal'],
+  ROOF_MATERIAL_LABELS: {
+    tiles: 'Clay Tiles',
+    slate: 'Slate',
+    metal: 'Metal Sheet',
+  },
 
   // ── Layers ──────────────────────────────────
   LAYERS: ['structure', 'furniture', 'electrical', 'plumbing'],

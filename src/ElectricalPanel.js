@@ -13,10 +13,8 @@ export class ElectricalPanel {
   }
 
   hitTest(px, py) {
-    const w = 52;
-    const h = 36;
-    return px >= this.x - w / 2 && px <= this.x + w / 2 &&
-      py >= this.y - h / 2 && py <= this.y + h / 2;
+    const r = 24; // radius-based hit test (covers 40x12 rotated box)
+    return (px - this.x) ** 2 + (py - this.y) ** 2 <= r * r;
   }
 
   serialize() {

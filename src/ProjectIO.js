@@ -34,10 +34,6 @@ export class ProjectIO {
     event.target.value = '';
   }
 
-  applySharedState(data) {
-    this.app.applyProjectPayload(data);
-  }
-
   exportPNG() {
     const app = this.app;
     if (!exportPNG(app.currentStory, app.renderer, app.currentStory.name)) {

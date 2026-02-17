@@ -24,6 +24,11 @@ export function createLayeredStory(name) {
     activeLayer: 'structure',
     storyHeight: CONFIG.DEFAULT_STORY_HEIGHT,
     slabThickness: CONFIG.DEFAULT_SLAB_THICKNESS,
+    roofEnabled: false,
+    roofStyle: 'gable',
+    roofPitch: CONFIG.DEFAULT_ROOF_PITCH,
+    roofOverhang: CONFIG.DEFAULT_ROOF_OVERHANG,
+    roofMaterial: CONFIG.DEFAULT_ROOF_MATERIAL,
     layers: {
       structure: { visible: true, walls: [], doors: [], windows: [], floors: [], stairs: [], labels: [] },
       furniture: { visible: true, items: [] },
@@ -92,6 +97,11 @@ function serializeStory(story) {
     activeLayer: story?.activeLayer || 'structure',
     storyHeight: story?.storyHeight,
     slabThickness: story?.slabThickness,
+    roofEnabled: story?.roofEnabled || false,
+    roofStyle: story?.roofStyle || 'gable',
+    roofPitch: story?.roofPitch ?? CONFIG.DEFAULT_ROOF_PITCH,
+    roofOverhang: story?.roofOverhang ?? CONFIG.DEFAULT_ROOF_OVERHANG,
+    roofMaterial: story?.roofMaterial || CONFIG.DEFAULT_ROOF_MATERIAL,
     layers: {
       structure: {
         visible: structure.visible !== false,
@@ -158,6 +168,11 @@ function deserializeStory(story) {
     activeLayer: story.activeLayer || 'structure',
     storyHeight: asNumber(story.storyHeight, CONFIG.DEFAULT_STORY_HEIGHT),
     slabThickness: asNumber(story.slabThickness, CONFIG.DEFAULT_SLAB_THICKNESS),
+    roofEnabled: !!story.roofEnabled,
+    roofStyle: story.roofStyle || 'gable',
+    roofPitch: asNumber(story.roofPitch, CONFIG.DEFAULT_ROOF_PITCH),
+    roofOverhang: asNumber(story.roofOverhang, CONFIG.DEFAULT_ROOF_OVERHANG),
+    roofMaterial: story.roofMaterial || CONFIG.DEFAULT_ROOF_MATERIAL,
     layers: {
       structure: deserializeStructureLayer(layers.structure || {}),
       furniture: deserializeFurnitureLayer(layers.furniture || {}),
@@ -173,6 +188,11 @@ function _migrateOldStory(story) {
     activeLayer: 'structure',
     storyHeight: CONFIG.DEFAULT_STORY_HEIGHT,
     slabThickness: CONFIG.DEFAULT_SLAB_THICKNESS,
+    roofEnabled: false,
+    roofStyle: 'gable',
+    roofPitch: CONFIG.DEFAULT_ROOF_PITCH,
+    roofOverhang: CONFIG.DEFAULT_ROOF_OVERHANG,
+    roofMaterial: CONFIG.DEFAULT_ROOF_MATERIAL,
     layers: {
       structure: deserializeStructureLayer({
         visible: true,

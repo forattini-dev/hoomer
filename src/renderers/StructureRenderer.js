@@ -6,7 +6,7 @@
 import { CONFIG } from '../config.js';
 import { Geom } from '../geometry.js';
 import { Materials } from '../materials.js';
-import { drawTextWithBg, drawSelectionDash, endDash } from './helpers.js';
+import { drawTextWithBg, drawSelectionCircle } from './helpers.js';
 
 const C = CONFIG.COLORS;
 const { SELECTION, TEXT } = C;
@@ -36,6 +36,11 @@ export function drawStructureLayer(ctx, layer, state, isActive) {
   }
   for (const wall of layer.walls) {
     drawDimension(ctx, wall, zoom);
+  }
+
+  // Roof overlay (drawn last, on top)
+  if (state.currentStory?.roofEnabled && layer.walls.length > 0) {
+    drawRoofOverlay(ctx, layer.walls, state.currentStory, zoom);
   }
 }
 
@@ -171,13 +176,7 @@ export function drawDoor(ctx, door, isSelected, zoom) {
 
   // Selection highlight
   if (isSelected) {
-    ctx.strokeStyle = SELECTION;
-    ctx.lineWidth = 1 / zoom;
-    ctx.setLineDash([4 / zoom, 3 / zoom]);
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, door.width / 2 + 5 / zoom, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    drawSelectionCircle(ctx, center.x, center.y, door.width / 2 + 5 / zoom, zoom);
   }
 
   ctx.restore();
@@ -235,12 +234,7 @@ export function drawWindow(ctx, win, isSelected, zoom) {
   }
 
   if (isSelected) {
-    drawSelectionDash(ctx, zoom);
-    ctx.lineWidth = 1 / zoom;
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, win.width / 2 + 5 / zoom, 0, Math.PI * 2);
-    ctx.stroke();
-    endDash(ctx);
+    drawSelectionCircle(ctx, center.x, center.y, win.width / 2 + 5 / zoom, zoom);
   }
 
   ctx.restore();
@@ -551,4 +545,163 @@ function _drawWindowCasement(ctx, p1, p2, ndx, ndy, color, width, isSelected, zo
   ctx.moveTo(p1.x, p1.y);
   ctx.lineTo(arcEnd.x, arcEnd.y);
   ctx.stroke();
+}
+
+// ── Roof Overlay (2D) ───────────────────────────────────────────────
+
+const ROOF_COLOR = 'rgba(160,82,45,0.4)';
+const ROOF_RIDGE_COLOR = 'rgba(120,60,30,0.5)';
+
+function drawRoofOverlay(ctx, walls, story, zoom) {
+  const outline = Geom.detectOuterPerimeter(walls);
+  if (!outline || outline.length < 3) return;
+
+  const overhang = story.roofOverhang || 0;
+  const eavesOutline = overhang > 0
+    ? Geom.offsetPolygon(outline, overhang)
+    : outline;
+
+  ctx.save();
+
+  // Draw eaves outline (dashed)
+  ctx.strokeStyle = ROOF_COLOR;
+  ctx.lineWidth = 1.5 / zoom;
+  ctx.setLineDash([8 / zoom, 4 / zoom]);
+  ctx.beginPath();
+  ctx.moveTo(eavesOutline[0].x, eavesOutline[0].y);
+  for (let i = 1; i < eavesOutline.length; i++) {
+    ctx.lineTo(eavesOutline[i].x, eavesOutline[i].y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Compute bounding box for ridge lines
+  const style = story.roofStyle || 'gable';
+  if (style === 'flat') {
+    ctx.restore();
+    return;
+  }
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of eavesOutline) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  const isXLonger = spanX >= spanY;
+  const shorterSpan = isXLonger ? spanY : spanX;
+
+  if (style === 'shed') {
+    // Shed: draw a single line at the high edge
+    ctx.strokeStyle = ROOF_RIDGE_COLOR;
+    ctx.lineWidth = 2 / zoom;
+    if (isXLonger) {
+      ctx.beginPath();
+      ctx.moveTo(minX, minY);
+      ctx.lineTo(maxX, minY);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(maxX, minY);
+      ctx.lineTo(maxX, maxY);
+      ctx.stroke();
+    }
+  } else if (style === 'gable') {
+    // Ridge line along the center of the longer axis
+    ctx.strokeStyle = ROOF_RIDGE_COLOR;
+    ctx.lineWidth = 2 / zoom;
+    if (isXLonger) {
+      const midY = (minY + maxY) / 2;
+      ctx.beginPath();
+      ctx.moveTo(minX, midY);
+      ctx.lineTo(maxX, midY);
+      ctx.stroke();
+    } else {
+      const midX = (minX + maxX) / 2;
+      ctx.beginPath();
+      ctx.moveTo(midX, minY);
+      ctx.lineTo(midX, maxY);
+      ctx.stroke();
+    }
+  } else if (style === 'hip') {
+    // Ridge + hip lines from corners to ridge endpoints
+    const inset = shorterSpan / 2;
+    ctx.strokeStyle = ROOF_RIDGE_COLOR;
+    ctx.lineWidth = 2 / zoom;
+
+    if (isXLonger) {
+      const midY = (minY + maxY) / 2;
+      const rX0 = minX + inset;
+      const rX1 = maxX - inset;
+
+      if (rX0 < rX1) {
+        // Ridge line
+        ctx.beginPath();
+        ctx.moveTo(rX0, midY);
+        ctx.lineTo(rX1, midY);
+        ctx.stroke();
+
+        // Hip lines (dashed from corners to ridge ends)
+        ctx.setLineDash([6 / zoom, 3 / zoom]);
+        ctx.lineWidth = 1.2 / zoom;
+        ctx.beginPath();
+        ctx.moveTo(minX, minY); ctx.lineTo(rX0, midY);
+        ctx.moveTo(minX, maxY); ctx.lineTo(rX0, midY);
+        ctx.moveTo(maxX, minY); ctx.lineTo(rX1, midY);
+        ctx.moveTo(maxX, maxY); ctx.lineTo(rX1, midY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        // Pyramid: lines from all corners to center
+        const midX = (minX + maxX) / 2;
+        ctx.setLineDash([6 / zoom, 3 / zoom]);
+        ctx.lineWidth = 1.2 / zoom;
+        ctx.beginPath();
+        ctx.moveTo(minX, minY); ctx.lineTo(midX, midY);
+        ctx.moveTo(maxX, minY); ctx.lineTo(midX, midY);
+        ctx.moveTo(maxX, maxY); ctx.lineTo(midX, midY);
+        ctx.moveTo(minX, maxY); ctx.lineTo(midX, midY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    } else {
+      const midX = (minX + maxX) / 2;
+      const rY0 = minY + inset;
+      const rY1 = maxY - inset;
+
+      if (rY0 < rY1) {
+        ctx.beginPath();
+        ctx.moveTo(midX, rY0);
+        ctx.lineTo(midX, rY1);
+        ctx.stroke();
+
+        ctx.setLineDash([6 / zoom, 3 / zoom]);
+        ctx.lineWidth = 1.2 / zoom;
+        ctx.beginPath();
+        ctx.moveTo(minX, minY); ctx.lineTo(midX, rY0);
+        ctx.moveTo(maxX, minY); ctx.lineTo(midX, rY0);
+        ctx.moveTo(minX, maxY); ctx.lineTo(midX, rY1);
+        ctx.moveTo(maxX, maxY); ctx.lineTo(midX, rY1);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        const midY = (minY + maxY) / 2;
+        ctx.setLineDash([6 / zoom, 3 / zoom]);
+        ctx.lineWidth = 1.2 / zoom;
+        ctx.beginPath();
+        ctx.moveTo(minX, minY); ctx.lineTo(midX, midY);
+        ctx.moveTo(maxX, minY); ctx.lineTo(midX, midY);
+        ctx.moveTo(maxX, maxY); ctx.lineTo(midX, midY);
+        ctx.moveTo(minX, maxY); ctx.lineTo(midX, midY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  ctx.restore();
 }

@@ -26,3 +26,27 @@ export function drawSelectionDash(ctx, zoom) {
 export function endDash(ctx) {
   ctx.setLineDash([]);
 }
+
+export function drawSelectionCircle(ctx, x, y, radius, zoom) {
+  ctx.save();
+  ctx.strokeStyle = CONFIG.COLORS.SELECTION;
+  ctx.lineWidth = 1 / zoom;
+  ctx.setLineDash([4 / zoom, 3 / zoom]);
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+export function drawSelectionPolyline(ctx, points, zoom) {
+  if (points.length < 2) return;
+  ctx.setLineDash([4 / zoom, 3 / zoom]);
+  ctx.strokeStyle = CONFIG.COLORS.SELECTION;
+  ctx.lineWidth = 1 / zoom;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}

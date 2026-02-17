@@ -118,9 +118,9 @@ export class Viewer3D {
       this._ground.geometry.dispose();
       this._ground.geometry = new THREE.PlaneGeometry(tw, th);
 
-      // Match 2D coordinate system:
-      //  bottom-left: terrain 2D rect (0, -h) → (w, 0)  →  3D X: 0..tw, Z: 0..th
-      //  center:      terrain 2D rect (-w/2, -h/2) → (w/2, h/2)  →  3D centered at origin
+      // Match 2D coordinate system (3D Z = -2D Y):
+      //  center:      terrain centered at origin
+      //  bottom-left: 2D rect x:[0,w] y:[-h,0] → 3D X:[0,tw] Z:[0,th]
       let cx, cz;
       if (axisOrigin === 'center') {
         cx = 0;

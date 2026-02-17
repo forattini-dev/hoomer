@@ -3,6 +3,11 @@
 
 export const propsPanel = `
       <aside id="properties-panel">
+        <div class="mobile-panel-header">
+          <div class="panel-title">Properties</div>
+          <button id="btn-mobile-close-props" class="panel-mobile-close" type="button" aria-label="Fechar painel de propriedades">×</button>
+        </div>
+
         <!-- Wall properties -->
         <div id="wall-props">
           <div class="panel-title">Wall</div>

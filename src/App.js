@@ -11,7 +11,6 @@ import { CostsView } from './CostsView.js';
 import {
   createLayeredStory,
   deserializeState,
-  serializeState,
   storyName,
   buildProjectPayload,
   parseProjectPayload,
@@ -145,6 +144,7 @@ export class App {
 
     // Label edit state (avoid history spam)
     this._labelEditActive = false;
+    this.mobilePanel = 'none';
 
     // Input handling (events, pan, zoom, pointer tracking)
     this.input = new InputManager(this.canvas, this.hostElement, this);
@@ -167,6 +167,7 @@ export class App {
     this._persistTimer = null;
 
     this.renderer.resize();
+    this._setMobilePanel('none');
     this._bindUI();
     this.threeD.bindMobileWalkControls();
     this._syncStoryTabs();
@@ -241,10 +242,6 @@ export class App {
   }
 
   // ── State Serialization ─────────────────────
-  _getState() {
-    return serializeState(this);
-  }
-
   _getPersistPayload() {
     return buildProjectPayload(this);
   }
@@ -298,16 +295,6 @@ export class App {
     }
   }
 
-  _getStoryElevation(index) {
-    let elevation = 0;
-    const last = Math.max(0, Math.min(index, this.stories.length));
-    for (let i = 0; i < last; i++) {
-      const storyHeight = Number(this.stories[i]?.storyHeight);
-      elevation += Number.isFinite(storyHeight) ? storyHeight : CONFIG.DEFAULT_STORY_HEIGHT;
-    }
-    return elevation;
-  }
-
   _pushHistory() {
     this.history.push(this._getPersistPayload());
     this._syncUndoRedo();
@@ -345,6 +332,21 @@ export class App {
     this._syncUndoRedo();
     if (!silent) this._status('Project loaded');
     this._centerView();
+    this._render();
+    return true;
+  }
+
+  _restoreStateFromPayload(payload, statusText) {
+    const normalized = parseProjectPayload(payload);
+    if (!normalized.state) return false;
+
+    if (normalized.meta) {
+      this._setProjectMeta(normalized.meta);
+    }
+    this._setState(normalized.state);
+    this._syncSelection();
+    this._updateGhost();
+    if (statusText) this._status(statusText);
     this._render();
     return true;
   }
@@ -545,7 +547,8 @@ export class App {
 
   _handleCanvasMove(world, snapped) {
     this.mouseWorld = snapped;
-    this.$('status-coords').textContent = `X: ${Math.round(snapped.x)} cm  Y: ${Math.round(snapped.y)} cm`;
+    const statusCoords = this.$('status-coords');
+    if (statusCoords) statusCoords.textContent = `X: ${Math.round(snapped.x)} cm  Y: ${Math.round(snapped.y)} cm`;
 
     if (this.drag.isDragging && this.drag.dragWall) {
       this.drag.doDrag(snapped.x, snapped.y);
@@ -599,6 +602,7 @@ export class App {
   _switchTab(tabName) {
     if (this.activeTab === tabName) return;
     this.activeTab = tabName;
+    if (tabName !== 'creative') this._closeMobilePanel();
 
     // Toggle button active states
     for (const btn of this.$$('.top-tab')) {
@@ -660,6 +664,28 @@ export class App {
         <label>Slab</label>
         <input type="number" class="proj-slab-thickness" data-index="${i}" value="${s.slabThickness}" min="5" max="50" step="1">
         <span style="font-size:10px;color:var(--text-muted)">cm</span>
+        <div class="project-roof-row" style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:3px">
+            <input type="checkbox" class="proj-roof-enabled" data-index="${i}" ${s.roofEnabled ? 'checked' : ''}>
+            Roof
+          </label>
+          <select class="proj-roof-style" data-index="${i}" ${!s.roofEnabled ? 'disabled' : ''}>
+            ${CONFIG.ROOF_STYLES.map(rs =>
+              `<option value="${rs}" ${rs === s.roofStyle ? 'selected' : ''}>${CONFIG.ROOF_STYLE_LABELS[rs]}</option>`
+            ).join('')}
+          </select>
+          <label>Pitch</label>
+          <input type="number" class="proj-roof-pitch" data-index="${i}" value="${s.roofPitch}" min="5" max="60" step="5" style="width:50px" ${!s.roofEnabled ? 'disabled' : ''}>
+          <span style="font-size:10px;color:var(--text-muted)">&deg;</span>
+          <label>Overhang</label>
+          <input type="number" class="proj-roof-overhang" data-index="${i}" value="${s.roofOverhang}" min="0" max="100" step="5" style="width:50px" ${!s.roofEnabled ? 'disabled' : ''}>
+          <span style="font-size:10px;color:var(--text-muted)">cm</span>
+          <select class="proj-roof-material" data-index="${i}" ${!s.roofEnabled ? 'disabled' : ''}>
+            ${CONFIG.ROOF_MATERIALS.map(rm =>
+              `<option value="${rm}" ${rm === s.roofMaterial ? 'selected' : ''}>${CONFIG.ROOF_MATERIAL_LABELS[rm]}</option>`
+            ).join('')}
+          </select>
+        </div>
       `;
       container.appendChild(row);
     });
@@ -679,14 +705,61 @@ export class App {
         this._schedulePersist();
       });
     }
+
+    // Roof controls
+    for (const input of container.querySelectorAll('.proj-roof-enabled')) {
+      input.addEventListener('change', () => {
+        const idx = parseInt(input.dataset.index);
+        this.stories[idx].roofEnabled = input.checked;
+        // Enable/disable sibling controls
+        const row = input.closest('.project-roof-row');
+        if (row) {
+          for (const el of row.querySelectorAll('select, input[type="number"]')) {
+            el.disabled = !input.checked;
+          }
+        }
+        this._schedulePersist();
+        this._render();
+      });
+    }
+    for (const sel of container.querySelectorAll('.proj-roof-style')) {
+      sel.addEventListener('change', () => {
+        const idx = parseInt(sel.dataset.index);
+        this.stories[idx].roofStyle = sel.value;
+        this._schedulePersist();
+        this._render();
+      });
+    }
+    for (const input of container.querySelectorAll('.proj-roof-pitch')) {
+      input.addEventListener('change', () => {
+        const idx = parseInt(input.dataset.index);
+        this.stories[idx].roofPitch = parseInt(input.value) || CONFIG.DEFAULT_ROOF_PITCH;
+        this._schedulePersist();
+        this._render();
+      });
+    }
+    for (const input of container.querySelectorAll('.proj-roof-overhang')) {
+      input.addEventListener('change', () => {
+        const idx = parseInt(input.dataset.index);
+        this.stories[idx].roofOverhang = parseInt(input.value) || 0;
+        this._schedulePersist();
+        this._render();
+      });
+    }
+    for (const sel of container.querySelectorAll('.proj-roof-material')) {
+      sel.addEventListener('change', () => {
+        const idx = parseInt(sel.dataset.index);
+        this.stories[idx].roofMaterial = sel.value;
+        this._schedulePersist();
+        this._render();
+      });
+    }
   }
 
   // ── Project I/O delegates ──────────────────
   _exportJSON() { this.projectIO.exportJSONFile(); }
   _importJSON(event) { this.projectIO.importJSON(event); }
-  _applySharedState(data) { this.applyProjectPayload(data); }
   _shareProject() { this.projectIO.shareProject(); }
-  _loadFromHash() { this.projectIO.loadFromHash(); }
 
   // ── Undo / Redo ─────────────────────────────
   _undo() {
@@ -701,13 +774,7 @@ export class App {
     }
     const s = this.history.undo(this._getPersistPayload());
     if (s) {
-      const normalized = parseProjectPayload(s);
-      if (normalized.meta) this._setProjectMeta(normalized.meta);
-      if (normalized.state) this._setState(normalized.state);
-      this._syncSelection();
-      this._updateGhost();
-      this._status('Undone');
-      this._render();
+      this._restoreStateFromPayload(s, 'Undone');
     }
     this._syncUndoRedo();
     this._schedulePersist();
@@ -716,13 +783,7 @@ export class App {
   _redo() {
     const s = this.history.redo(this._getPersistPayload());
     if (s) {
-      const normalized = parseProjectPayload(s);
-      if (normalized.meta) this._setProjectMeta(normalized.meta);
-      if (normalized.state) this._setState(normalized.state);
-      this._syncSelection();
-      this._updateGhost();
-      this._status('Redone');
-      this._render();
+      this._restoreStateFromPayload(s, 'Redone');
     }
     this._syncUndoRedo();
     this._schedulePersist();
@@ -742,6 +803,30 @@ export class App {
 
   _bindUI() { bindUI(this); }
 
+  _setMobilePanel(mode) {
+    const nextMode = mode === 'tools' || mode === 'props' ? mode : 'none';
+    this.mobilePanel = nextMode;
+    if (!this.hostElement) return;
+    if (nextMode === 'none') {
+      this.hostElement.removeAttribute('data-mobile-panel');
+      return;
+    }
+    this.hostElement.setAttribute('data-mobile-panel', nextMode);
+  }
+
+  _openMobilePanel(mode) {
+    if (this.is3DMode) return;
+    if (this.mobilePanel === mode) {
+      this._setMobilePanel('none');
+      return;
+    }
+    this._setMobilePanel(mode);
+  }
+
+  _closeMobilePanel() {
+    this._setMobilePanel('none');
+  }
+
   _ensureValidTool() {
     const tools = CONFIG.LAYER_TOOLS[this.activeLayer] || [];
     if (!tools.length) return;
@@ -758,6 +843,9 @@ export class App {
   }
 
   _setTool(tool) {
+    if (this.mobilePanel !== 'none') {
+      this._closeMobilePanel();
+    }
     this.activeTool = tool;
     this.isDrawing = false;
     this.drawStart = null;
@@ -808,11 +896,11 @@ export class App {
   }
 
   _syncSelection() { this.selection.syncUI(); }
-  _fillCircuitSelect(id, sel) { this.selection.fillCircuitSelect(id, sel); }
   _refreshCircuitSelects() { this.selection.refreshCircuitSelects(); }
 
   _status(text) {
-    this.$('status-text').textContent = text;
+    const status = this.$('status-text');
+    if (status) status.textContent = text;
     this.bus.emit('status', text);
   }
 
@@ -823,6 +911,7 @@ export class App {
 
   // ── Cleanup ─────────────────────────────────
   destroy() {
+    this._closeMobilePanel();
     if (this.input) {
       this.input.destroy();
       this.input = null;
